@@ -1,4 +1,4 @@
-﻿    // --- 1. QURANIC TADABBUR DATABASE ---
+    // --- 1. QURANIC TADABBUR DATABASE ---
     
     // --- خريطة السور الـ114: [الاسم، رقم النزول، عدد الآيات، مكية=1/مدنية=0] (المصدر: Tanzil) ---
     const SURAH_DATA = [
@@ -184,6 +184,7 @@
     const audioBus = { key: null, element: null, onStolen: {} };
 
     function claimAudio(key, element) {
+      if (key === 'remind' && audioBus.key === 'kahf') return; // تنبيه الربع لا يقطع التلاوة
       if (audioBus.key && audioBus.key !== key) {
         try { audioBus.element.pause(); } catch (e) { /* لا صوت نشط */ }
         const stolen = audioBus.key;
@@ -229,7 +230,7 @@
         resetAyahPlayer();
         return;
       }
-      const ref = parseAyahSourceRef($('ayahSurahBadge').textContent);
+      const ref = parseAyahSourceRef((tadabburDatabase[currentAyahIdx] || {}).surah || '');
       if (!ref) {
         showNoticeToast('تعذّر التعرّف على رقم السورة والآية.', 'fa-circle-exclamation', 6000);
         return;
@@ -270,6 +271,158 @@
         resetAyahPlayer();
         showNoticeToast('منع المتصفح التشغيل الأول، انقر زر التلاوة مرة أخرى.', 'fa-hand-pointer', 7000);
       });
+    }
+
+    // ===== يوم الجمعة: سورة الكهف بصوت 10 قرّاء =====
+    const KAHF_KEY = 'tv_kahf';
+    const KAHF_RECITER_KEY = 'tv_kahf_reciter';
+    const KAHF_NOTICE_KEY = 'tv_kahf_notice';
+    const KAHF_RECITERS = [
+      { name: 'مشاري العفاسي', url: 'https://server8.mp3quran.net/afs/018.mp3' },
+      { name: 'عبد الرحمن السديس', url: 'https://server11.mp3quran.net/sds/018.mp3' },
+      { name: 'سعود الشريم', url: 'https://server7.mp3quran.net/shur/018.mp3' },
+      { name: 'سعد الغامدي', url: 'https://server7.mp3quran.net/s_gmd/018.mp3' },
+      { name: 'ماهر المعيقلي', url: 'https://server12.mp3quran.net/maher/018.mp3' },
+      { name: 'ياسر الدوسري', url: 'https://server11.mp3quran.net/yasser/018.mp3' },
+      { name: 'ناصر القطامي', url: 'https://server6.mp3quran.net/qtm/018.mp3' },
+      { name: 'علي الحذيفي', url: 'https://server9.mp3quran.net/hthfi/018.mp3' },
+      { name: 'أحمد العجمي', url: 'https://server10.mp3quran.net/ajm/128/018.mp3' },
+      { name: 'محمود خليل الحصري', url: 'https://server13.mp3quran.net/husr/018.mp3' }
+    ];
+    let kahfCfg = { on: true, always: false };
+    let kahfAudio = null;
+    let kahfIdx = -1;
+    let kahfSeeking = false;
+
+    function isFridayInCity() {
+      const city = citiesDatabase[activeCityKey];
+      try {
+        return new Intl.DateTimeFormat('en-US', { timeZone: city ? city.tz : undefined, weekday: 'short' }).format(new Date()) === 'Fri';
+      } catch (e) {
+        return new Date().getDay() === 5;
+      }
+    }
+
+    function fmtAudioTime(sec) {
+      if (!Number.isFinite(sec) || sec < 0) return '0:00';
+      const total = Math.floor(sec);
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const ss = pad2(total % 60);
+      return h ? `${h}:${pad2(m)}:${ss}` : `${m}:${ss}`;
+    }
+
+    function positionKahfBtn() { /* الزر داخل شريط أزرار الزاوية في هذا الدمج */ }
+
+    function setKahfStatus(text) {
+      const el = $('kahfStatus');
+      if (el) el.textContent = text || '';
+    }
+
+    function renderKahf() {
+      const playing = Boolean(kahfAudio && !kahfAudio.paused && !kahfAudio.ended);
+      const btn = $('kahfBtn');
+      if (btn) btn.classList.toggle('is-playing', playing);
+      const icon = $('kahfToggleIcon');
+      if (icon) icon.className = `fa-solid ${playing ? 'fa-pause' : 'fa-play'}`;
+      const now = $('kahfNow');
+      if (now) now.textContent = kahfIdx >= 0 ? KAHF_RECITERS[kahfIdx].name : 'اختر قارئاً';
+      document.querySelectorAll('.kahf-reciter').forEach((b) => b.classList.toggle('is-active', Number(b.dataset.arg) === kahfIdx));
+      if (kahfAudio) {
+        const cur = $('kahfCur'); if (cur) cur.textContent = fmtAudioTime(kahfAudio.currentTime);
+        const dur = $('kahfDur'); if (dur) dur.textContent = fmtAudioTime(kahfAudio.duration);
+        const seek = $('kahfSeek');
+        if (seek && !kahfSeeking && kahfAudio.duration > 0) seek.value = String(Math.round((kahfAudio.currentTime / kahfAudio.duration) * 1000));
+      }
+    }
+
+    function updateKahfVisibility() {
+      const btn = $('kahfBtn');
+      if (!btn) return;
+      const playing = Boolean(kahfAudio && !kahfAudio.paused);
+      const show = playing || (kahfCfg.on && (kahfCfg.always || isFridayInCity()));
+      btn.classList.toggle('hidden', !show);
+      if (show) positionKahfBtn();
+      // تذكير لطيف مرة واحدة كل جمعة
+      if (kahfCfg.on && isFridayInCity()) {
+        const day = localDateKey();
+        if (store.get(KAHF_NOTICE_KEY) !== day) {
+          store.set(KAHF_NOTICE_KEY, day);
+          showNoticeToast('يوم الجمعة — يُستحب قراءة سورة الكهف. اضغط «سورة الكهف» للاستماع.', 'fa-book-quran', 15000);
+        }
+      }
+    }
+
+    function ensureKahfAudio() {
+      if (kahfAudio) return kahfAudio;
+      kahfAudio = new Audio();
+      kahfAudio.preload = 'none';
+      kahfAudio.addEventListener('timeupdate', renderKahf);
+      kahfAudio.addEventListener('loadedmetadata', renderKahf);
+      kahfAudio.addEventListener('play', () => { claimAudio('kahf', kahfAudio); renderKahf(); });
+      kahfAudio.addEventListener('pause', () => { releaseAudio('kahf'); renderKahf(); });
+      kahfAudio.addEventListener('ended', () => { releaseAudio('kahf'); setKahfStatus('تمّت تلاوة سورة الكهف. تقبّل الله منك.'); renderKahf(); });
+      kahfAudio.addEventListener('waiting', () => setKahfStatus('جارٍ التحميل...'));
+      kahfAudio.addEventListener('playing', () => setKahfStatus(''));
+      kahfAudio.addEventListener('error', () => {
+        setKahfStatus('تعذّر تحميل هذا القارئ، جرّب قارئاً آخر أو تحقق من الاتصال.');
+        renderKahf();
+      });
+      return kahfAudio;
+    }
+
+    function kahfPlayReciter(index) {
+      const i = Number(index);
+      if (!Number.isInteger(i) || i < 0 || i >= KAHF_RECITERS.length) return;
+      const audio = ensureKahfAudio();
+      if (i === kahfIdx && audio.src && !audio.error) { kahfToggle(); return; }
+      kahfIdx = i;
+      store.set(KAHF_RECITER_KEY, String(i));
+      audio.src = KAHF_RECITERS[i].url;
+      audio.volume = (Number($('kahfVolume') ? $('kahfVolume').value : 80) || 80) / 100;
+      setKahfStatus('جارٍ التحميل...');
+      renderKahf();
+      audio.play().catch(() => setKahfStatus('تعذّر التشغيل التلقائي، اضغط زر التشغيل.'));
+    }
+
+    function kahfToggle() {
+      if (kahfIdx < 0) { kahfPlayReciter(Number(store.get(KAHF_RECITER_KEY, '0')) || 0); return; }
+      const audio = ensureKahfAudio();
+      if (audio.paused) audio.play().catch(() => setKahfStatus('تعذّر التشغيل، تحقق من الاتصال.'));
+      else audio.pause();
+    }
+
+    function setupKahf() {
+      const saved = store.getJSON(KAHF_KEY, null) || {};
+      kahfCfg = { on: saved.on !== false, always: Boolean(saved.always) };
+
+      const list = $('kahfList');
+      if (list) {
+        list.innerHTML = KAHF_RECITERS.map((r, i) => `<button type="button" data-action="kahfPlayReciter" data-arg="${i}" class="kahf-reciter">${r.name}</button>`).join('');
+      }
+      const on = $('kahfEnabledToggle'); if (on) on.checked = kahfCfg.on;
+      const always = $('kahfAlwaysToggle'); if (always) always.checked = kahfCfg.always;
+      const save = () => { store.setJSON(KAHF_KEY, kahfCfg); updateKahfVisibility(); };
+      if (on) on.addEventListener('change', () => { kahfCfg.on = on.checked; save(); });
+      if (always) always.addEventListener('change', () => { kahfCfg.always = always.checked; save(); });
+
+      const seek = $('kahfSeek');
+      if (seek) {
+        seek.addEventListener('input', () => { kahfSeeking = true; });
+        seek.addEventListener('change', () => {
+          kahfSeeking = false;
+          if (kahfAudio && kahfAudio.duration > 0) kahfAudio.currentTime = (Number(seek.value) / 1000) * kahfAudio.duration;
+        });
+      }
+      const vol = $('kahfVolume');
+      if (vol) vol.addEventListener('input', () => { if (kahfAudio) kahfAudio.volume = Number(vol.value) / 100; });
+
+      audioBus.onStolen.kahf = () => { setKahfStatus('تم إيقاف التلاوة مؤقتاً لتشغيل صوت آخر.'); renderKahf(); };
+      window.addEventListener('resize', positionKahfBtn);
+      document.addEventListener('tv-lang-change', () => setTimeout(positionKahfBtn, 50));
+      setInterval(updateKahfVisibility, 60000);
+      updateKahfVisibility();
+      renderKahf();
     }
 
 const tadabburDatabase = [
@@ -738,7 +891,7 @@ const tadabburDatabase = [
       madinah: { name: 'المدينة المنورة', region: 'طيبة الطيبة • توقيت أم القرى', lat: 24.5247, lon: 39.5692, tz: SAUDI_TZ, method: 'ummalqura' },
       jeddah: { name: 'جدة', region: 'عروس البحر الأحمر', lat: 21.5433, lon: 39.1728, tz: SAUDI_TZ, method: 'ummalqura' },
       dammam: { name: 'الدمام والخبر', region: 'المنطقة الشرقية', lat: 26.4207, lon: 50.0888, tz: SAUDI_TZ, method: 'ummalqura' },
-      ahsa: { name: 'الأحساء والمنامة', region: 'واحة النخيل • الشرقية', lat: 25.3835, lon: 49.5864, tz: SAUDI_TZ, method: 'ummalqura' },
+      ahsa: { name: 'الأحساء (الهفوف)', region: 'واحة النخيل • الشرقية', lat: 25.3648, lon: 49.5876, tz: SAUDI_TZ, method: 'ummalqura' },
       taif: { name: 'الطائف', region: 'عروس المصايف', lat: 21.2854, lon: 40.4222, tz: SAUDI_TZ, method: 'ummalqura' },
       tabuk: { name: 'تبوك', region: 'منطقة تبوك الشمالية', lat: 28.3835, lon: 36.5662, tz: SAUDI_TZ, method: 'ummalqura' },
       abha: { name: 'أبها وعسير', region: 'منطقة عسير الجنوبية', lat: 18.2164, lon: 42.5053, tz: SAUDI_TZ, method: 'ummalqura' },
@@ -747,7 +900,9 @@ const tadabburDatabase = [
       najran: { name: 'نجران', region: 'جنوب المملكة', lat: 17.4924, lon: 44.1277, tz: SAUDI_TZ, method: 'ummalqura' },
       jouf: { name: 'سكاكا والجوف', region: 'منطقة الجوف', lat: 29.9697, lon: 40.2064, tz: SAUDI_TZ, method: 'ummalqura' },
       yanbu: { name: 'ينبع البحر', region: 'الساحل الغربي', lat: 24.0900, lon: 38.0600, tz: SAUDI_TZ, method: 'ummalqura' },
-      dubai: { name: 'دبي وأبوظبي', region: 'دولة الإمارات العربية', lat: 25.2048, lon: 55.2708, tz: 'Asia/Dubai', method: 'uae' },
+      dubai: { name: 'دبي', region: 'دولة الإمارات العربية', lat: 25.2048, lon: 55.2708, tz: 'Asia/Dubai', method: 'uae' },
+      abudhabi: { name: 'أبوظبي', region: 'دولة الإمارات العربية', lat: 24.4539, lon: 54.3773, tz: 'Asia/Dubai', method: 'uae' },
+      manama: { name: 'المنامة', region: 'مملكة البحرين', lat: 26.2285, lon: 50.5860, tz: 'Asia/Bahrain', method: 'mwl' },
       kuwait: { name: 'مدينة الكويت', region: 'دولة الكويت الشقيقة', lat: 29.3759, lon: 47.9774, tz: 'Asia/Kuwait', method: 'kuwait' },
       doha: { name: 'الدوحة', region: 'دولة قطر', lat: 25.2854, lon: 51.5310, tz: 'Asia/Qatar', method: 'qatar' },
       muscat: { name: 'مسقط', region: 'سلطنة عُمان', lat: 23.5880, lon: 58.3829, tz: 'Asia/Muscat', method: 'mwl' },
@@ -799,12 +954,12 @@ const tadabburDatabase = [
 
     // --- 4. QUICK DHIKR & TASBIH ---
     const quickDhikrList = [
-      { text: "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ ، سُبْحَانَ اللَّهِ الْعَظِيمِ", virtue: "كلمتان خفيفتان على اللسان ثقيلتان في الميزان حبيبتان إلى الرحمن" },
-      { text: "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ الْعَلِيِّ الْعَظِيمِ", virtue: "كنزٌ من كنوز الجنة وبابٌ عظيمٌ لتفريج الهموم ورفع البلاء" },
-      { text: "أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ الَّذِي لَا إِلٰهَ إِلَّا هُوَ وَأَتُوبُ إِلَيْهِ", virtue: "غُفرت ذنوبه وإن كان فرّ من الزحف، وأمانٌ باقٍ في الأرض" },
-      { text: "اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَىٰ نَبِيِّنَا مُحَمَّدٍ", virtue: "من صلى عليّ صلاة صلى الله عليه بها عشراً وحُطت عنه عشر خطيئات" },
-      { text: "لَا إِلٰهَ إِلَّا أَنْتَ سُبْحَانَكَ إِنِّي كُنْتُ مِنَ الظَّالِمِينَ", virtue: "دعوة ذي النون؛ ما دعا بها مكروبٌ إلا فرّج الله عنه كربه" },
-      { text: "سُبْحَانَ اللَّهِ ، وَالْحَمْدُ لِلَّهِ ، وَلَا إِلٰهَ إِلَّا اللَّهُ ، وَاللَّهُ أَكْبَرُ", virtue: "أحبّ الكلام إلى الله، وغراس الجنة، وأفضل ما طلعت عليه الشمس" }
+      { name: "سبحان الله وبحمده", text: "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ ، سُبْحَانَ اللَّهِ الْعَظِيمِ", virtue: "كلمتان خفيفتان على اللسان ثقيلتان في الميزان حبيبتان إلى الرحمن" },
+      { name: "لا حول ولا قوة إلا بالله", text: "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ الْعَلِيِّ الْعَظِيمِ", virtue: "كنزٌ من كنوز الجنة وبابٌ عظيمٌ لتفريج الهموم ورفع البلاء" },
+      { name: "الاستغفار", text: "أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ الَّذِي لَا إِلٰهَ إِلَّا هُوَ وَأَتُوبُ إِلَيْهِ", virtue: "غُفرت ذنوبه وإن كان فرّ من الزحف، وأمانٌ باقٍ في الأرض" },
+      { name: "الصلاة على النبي ﷺ", text: "اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَىٰ نَبِيِّنَا مُحَمَّدٍ", virtue: "من صلى عليّ صلاة صلى الله عليه بها عشراً وحُطت عنه عشر خطيئات" },
+      { name: "دعوة ذي النون", text: "لَا إِلٰهَ إِلَّا أَنْتَ سُبْحَانَكَ إِنِّي كُنْتُ مِنَ الظَّالِمِينَ", virtue: "دعوة ذي النون؛ ما دعا بها مكروبٌ إلا فرّج الله عنه كربه" },
+      { name: "التسبيح الأربع", text: "سُبْحَانَ اللَّهِ ، وَالْحَمْدُ لِلَّهِ ، وَلَا إِلٰهَ إِلَّا اللَّهُ ، وَاللَّهُ أَكْبَرُ", virtue: "أحبّ الكلام إلى الله، وغراس الجنة، وأفضل ما طلعت عليه الشمس" }
     ];
     let quickDhikrIdx = 0;
     let quickDhikrCountVal = 0;
@@ -861,6 +1016,8 @@ const tadabburDatabase = [
       quickDhikrIdx = index % quickDhikrList.length;
       quickDhikrCountVal = 0;
       $('quickDhikrText').textContent = quickDhikrList[quickDhikrIdx].text;
+      const ctaEl = $('quickDhikrCta');
+      if (ctaEl) ctaEl.textContent = quickDhikrList[quickDhikrIdx].name;
       $('quickDhikrVirtue').textContent = quickDhikrList[quickDhikrIdx].virtue;
       $('quickDhikrCount').textContent = 0;
     }
@@ -873,6 +1030,7 @@ const tadabburDatabase = [
       quickDhikrCountVal++;
       $('quickDhikrCount').textContent = quickDhikrCountVal;
       incrementTotalDailyTasbih();
+      checkTasbihAlert('dhikr', quickDhikrCountVal);
     }
 
     function readBigTasbih() {
@@ -888,6 +1046,7 @@ const tadabburDatabase = [
       $('bigTasbihDisplay').textContent = bigTasbihCountVal;
       saveBigTasbih();
       incrementTotalDailyTasbih();
+      checkTasbihAlert('dhikr', bigTasbihCountVal);
     }
 
     function resetTasbih() {
@@ -906,12 +1065,64 @@ const tadabburDatabase = [
       return readPeriodCount('tv_daily_tasbih');
     }
 
-    // ===== هدف الورد اليومي: شريط تقدّم في بطاقة ذكر الساعة =====
+    // ===== هدف الورد اليومي: شريط تقدّم في بطاقة ذكر الساعة + تنبيه الوصول للرقم =====
     const TASBIH_TARGET_KEY = 'tv_tasbih_target';
+    const TASBIH_ALERT_KEY = 'tv_tasbih_alert';
 
     function tasbihTargetValue() {
       const saved = Number(store.get(TASBIH_TARGET_KEY, '100'));
       return Number.isFinite(saved) && saved > 0 ? saved : 100;
+    }
+
+    // ===== تنبيه عند الوصول لرقم معيّن =====
+    let tasbihAlert = { on: false, n: 100, scope: 'period', repeat: false, sound: true };
+
+    function loadTasbihAlert() {
+      const saved = store.getJSON(TASBIH_ALERT_KEY, null) || {};
+      const n = Math.round(Number(saved.n));
+      tasbihAlert = {
+        on: Boolean(saved.on),
+        n: Number.isFinite(n) && n >= 1 ? Math.min(100000, n) : 100,
+        scope: saved.scope === 'dhikr' ? 'dhikr' : 'period',
+        repeat: Boolean(saved.repeat),
+        sound: saved.sound !== false
+      };
+    }
+
+    function checkTasbihAlert(scope, value) {
+      if (!tasbihAlert.on || tasbihAlert.scope !== scope || !(value > 0)) return;
+      const hit = value === tasbihAlert.n || (tasbihAlert.repeat && value % tasbihAlert.n === 0);
+      if (!hit) return;
+      showNoticeToast(`وصلتَ إلى الرقم ${value}`, 'fa-bell', 12000);
+      if (tasbihAlert.sound) { try { playHourlyDing(); } catch (e) { /* الصوت غير متاح */ } }
+      const card = $('widgetDhikrCard');
+      if (card) {
+        card.animate([{ boxShadow: '0 0 0 0 var(--glow-color)' }, { boxShadow: '0 0 0 14px transparent' }], { duration: 900, iterations: 2 });
+      }
+      if (navigator.vibrate) { try { navigator.vibrate(120); } catch (e) { /* غير مدعوم */ } }
+    }
+
+    function setupTasbihAlert() {
+      loadTasbihAlert();
+      const bind = (id, apply) => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener('change', () => { apply(el); store.setJSON(TASBIH_ALERT_KEY, tasbihAlert); });
+      };
+      const t = $('tasbihAlertToggle'); if (t) t.checked = tasbihAlert.on;
+      const n = $('tasbihAlertNumber'); if (n) n.value = String(tasbihAlert.n);
+      const sc = $('tasbihAlertScope'); if (sc) sc.value = tasbihAlert.scope;
+      const r = $('tasbihAlertRepeat'); if (r) r.checked = tasbihAlert.repeat;
+      const so = $('tasbihAlertSound'); if (so) so.checked = tasbihAlert.sound;
+      bind('tasbihAlertToggle', (el) => { tasbihAlert.on = el.checked; });
+      bind('tasbihAlertNumber', (el) => {
+        const v = Math.round(Number(el.value));
+        tasbihAlert.n = Number.isFinite(v) && v >= 1 ? Math.min(100000, v) : tasbihAlert.n;
+        el.value = String(tasbihAlert.n);
+      });
+      bind('tasbihAlertScope', (el) => { tasbihAlert.scope = el.value === 'dhikr' ? 'dhikr' : 'period'; });
+      bind('tasbihAlertRepeat', (el) => { tasbihAlert.repeat = el.checked; });
+      bind('tasbihAlertSound', (el) => { tasbihAlert.sound = el.checked; });
     }
 
     function renderTasbihWird() {
@@ -924,6 +1135,20 @@ const tadabburDatabase = [
       if (count) count.textContent = total;
       const label = $('tasbihTargetText');
       if (label) label.textContent = target;
+      const pctEl = $('tasbihPct');
+      if (pctEl) pctEl.textContent = `${pct}%`;
+      const wird = $('tasbihWird');
+      if (wird) wird.classList.toggle('is-done', total >= target);
+      const note = $('tasbihWirdNote');
+      if (note) note.textContent = total >= target ? 'ما شاء الله — أتممتَ وردك اليوم' : '';
+    }
+
+    function resetTasbihWird() {
+      store.setJSON('tv_daily_tasbih', { period: tasbihPeriodKey(), count: 0 });
+      quickDhikrCountVal = 0;
+      const qc = $('quickDhikrCount');
+      if (qc) qc.textContent = 0;
+      renderDailyTasbih();
     }
 
     function renderDailyTasbih() {
@@ -936,8 +1161,10 @@ const tadabburDatabase = [
     }
 
     function incrementTotalDailyTasbih() {
-      store.setJSON('tv_daily_tasbih', { period: tasbihPeriodKey(), count: readDailyTasbih() + 1 });
+      const nextCount = readDailyTasbih() + 1;
+      store.setJSON('tv_daily_tasbih', { period: tasbihPeriodKey(), count: nextCount });
       renderDailyTasbih();
+      checkTasbihAlert('period', nextCount);
     }
 
     // يحافظ على العدّاد الحالي عند تغيير المستخدم لفترة التصفير
@@ -971,6 +1198,8 @@ const tadabburDatabase = [
           renderTasbihWird();
         });
       }
+
+      setupTasbihAlert();
 
       bigTasbihCountVal = readBigTasbih();
       $('bigTasbihDisplay').textContent = bigTasbihCountVal;
@@ -1209,7 +1438,7 @@ const tadabburDatabase = [
     const DOCK_WIDTH_MIN = 35;
     const DOCK_WIDTH_MAX = 85;
     let widgetFontScales = {};
-    let dockSettings = { aiWidth: 68, swapped: false };
+    let dockSettings = { aiWidth: 50, swapped: false, v: 2 };
 
     let layoutData = null;       // { widgets: {id: rect}, base: {id: rect}, scale: {id: number} }
     let layoutEditing = false;
@@ -1447,19 +1676,22 @@ const tadabburDatabase = [
 
     function loadDockSettings() {
       const saved = store.getJSON(DOCK_SETTINGS_KEY, null);
-      dockSettings = { aiWidth: 68, swapped: false };
+      dockSettings = { aiWidth: 50, swapped: false, v: 2 };
       if (saved && typeof saved === 'object') {
         const width = Number(saved.aiWidth);
         if (Number.isFinite(width)) {
           dockSettings.aiWidth = Math.min(DOCK_WIDTH_MAX, Math.max(DOCK_WIDTH_MIN, width));
         }
         dockSettings.swapped = Boolean(saved.swapped);
+        // ترحيل العرض الافتراضي القديم (68%) إلى الجديد (50%)
+        if (saved.v !== 2 && Number(saved.aiWidth) === 68) dockSettings.aiWidth = 50;
+        dockSettings.v = 2;
       }
       applyDockSettings();
     }
 
     function setDockWidth(value) {
-      dockSettings.aiWidth = Math.min(DOCK_WIDTH_MAX, Math.max(DOCK_WIDTH_MIN, Math.round(Number(value) || 68)));
+      dockSettings.aiWidth = Math.min(DOCK_WIDTH_MAX, Math.max(DOCK_WIDTH_MIN, Math.round(Number(value) || 50)));
       store.setJSON(DOCK_SETTINGS_KEY, dockSettings);
       applyDockSettings();
     }
@@ -1472,6 +1704,22 @@ const tadabburDatabase = [
 
     // --- إدارة عناصر الشرائط: إخفاء/إظهار أي موقع أو أداة ---
     const DOCK_HIDDEN_KEY = 'tv_dock_hidden_v1';
+    // v1.6.4: روابط أدوات الذكاء التي تُخفى افتراضياً في أول تشغيل (تظهر من الإعدادات باختيار المستخدم)
+    const EXTRA_AI_TOOLS_HIDDEN = [
+      'https://poe.com',
+      'https://www.krea.ai',
+      'https://elevenlabs.io',
+      'https://www.midjourney.com',
+      'https://runwayml.com',
+      'https://suno.com',
+      'https://huggingface.co/chat',
+      'https://notebooklm.google.com',
+      'https://chat.mistral.ai',
+      'https://firefly.adobe.com',
+      'https://aistudio.google.com',
+      'https://labs.google',
+      'https://cloud.google.com/products/ai'
+    ];
     let dockHiddenItems = {};
     let dockItems = [];
 
@@ -1540,6 +1788,11 @@ const tadabburDatabase = [
       collectDockItems();
       const saved = store.getJSON(DOCK_HIDDEN_KEY, null);
       if (saved && typeof saved === 'object') dockHiddenItems = saved;
+      else {
+        // v1.6.4: بذرة أول تشغيل فقط (لا خيارات للمستخدم بعد) — الأدوات الـ13 مخفية وبدون علامة صح في الإعدادات
+        EXTRA_AI_TOOLS_HIDDEN.forEach((href) => { dockHiddenItems[href] = true; });
+        store.set(DOCK_HIDDEN_KEY, JSON.stringify(dockHiddenItems));
+      }
       applyDockItemsVisibility();
       renderDockItemsManager();
 
@@ -1567,12 +1820,12 @@ const tadabburDatabase = [
       }
     }
 
-    // --- فتح المواقع والأدوات: صفحة جديدة (الافتراضي) أم نفس التبويب ---
+    // --- فتح المواقع والأدوات: نفس التبويب (الافتراضي) أم صفحة جديدة ---
     const OPEN_LINKS_KEY = 'tv_open_links_mode';
-    let openLinksMode = 'new';
+    let openLinksMode = 'same';
 
     function setupOpenLinksMode() {
-      openLinksMode = store.get(OPEN_LINKS_KEY, 'new') === 'same' ? 'same' : 'new';
+      openLinksMode = store.get(OPEN_LINKS_KEY, 'same') === 'new' ? 'new' : 'same';
       const select = $('openLinksSelect');
       if (select) {
         select.value = openLinksMode;
@@ -1589,7 +1842,7 @@ const tadabburDatabase = [
       }
       document.addEventListener('click', (e) => {
         if (openLinksMode !== 'same') return;
-        const link = e.target.closest('#widgetAiToolsDock a, #widgetSocialDock a');
+        const link = e.target.closest('#widgetAiToolsDock a, #widgetSocialDock a, #googlePopover a');
         if (!link) return;
         if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
         e.preventDefault();
@@ -1598,7 +1851,7 @@ const tadabburDatabase = [
     }
 
     function switchSettingsTab(tab) {
-      if (!['widgets', 'layout', 'appearance', 'adhan'].includes(tab)) return;
+      if (!['widgets', 'layout', 'appearance', 'prayer', 'adhan'].includes(tab)) return;
       document.querySelectorAll('[data-settings-tab]').forEach((btn) => {
         btn.classList.toggle('is-active', btn.dataset.settingsTab === tab);
       });
@@ -1607,6 +1860,7 @@ const tadabburDatabase = [
       });
       const popover = $('settingsPopover');
       if (popover) popover.scrollTop = 0;
+      if (tab === 'prayer') renderPrayerAdvUI();
     }
 
     // تقسيمات جاهزة (تُطبّق كنسب من عرض اللوحة)
@@ -1739,9 +1993,9 @@ const tadabburDatabase = [
             ${width ? `
               <label class="flex items-center gap-1.5 min-w-0" title="عرض شريط الأدوات">
                 <i class="fa-solid fa-arrows-left-right text-[10px] opacity-55 flex-shrink-0"></i>
-                <input type="range" min="${DOCK_WIDTH_MIN}" max="${DOCK_WIDTH_MAX}" step="1" value="68"
+                <input type="range" min="${DOCK_WIDTH_MIN}" max="${DOCK_WIDTH_MAX}" step="1" value="50"
                        data-dock-width class="tv-range" aria-label="عرض شريط الأدوات">
-                <span data-dock-width-label class="text-[9px] opacity-60 font-mono w-7 text-center flex-shrink-0" dir="ltr">68%</span>
+                <span data-dock-width-label class="text-[9px] opacity-60 font-mono w-7 text-center flex-shrink-0" dir="ltr">50%</span>
               </label>` : `
               <span class="text-[9px] opacity-50 leading-tight">يأخذ المساحة المتبقية تلقائياً</span>`}
           </div>
@@ -2066,8 +2320,11 @@ const tadabburDatabase = [
     }
 
     // --- 8. CITY SELECTION & GPS ---
-    const DETECT_LABEL = 'تحديد موقعي الحالي تلقائياً (GPS)';
-    const METHOD_BY_COUNTRY = { sa: 'ummalqura', qa: 'qatar', ae: 'uae', kw: 'kuwait', eg: 'egypt' };
+    const METHOD_BY_COUNTRY = {
+      sa: 'ummalqura', qa: 'qatar', ae: 'uae', kw: 'kuwait', eg: 'egypt',
+      pk: 'karachi', in: 'karachi', bd: 'karachi', af: 'karachi',
+      us: 'isna', ca: 'isna', tr: 'turkey', sg: 'singapore', my: 'singapore', id: 'singapore', bn: 'singapore'
+    };
 
     function setupCityPicker(filterText = '') {
       const container = $('cityButtonsGrid');
@@ -2142,11 +2399,11 @@ const tadabburDatabase = [
       setCitySearchHint('جارٍ البحث في قاعدة مدن العالم...');
 
       try {
-        const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=ar&format=json`;
+        const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=15&language=${I18N.apiLang()}&format=json`;
         const response = await fetch(url);
         if (!response.ok) throw new Error('search-failed');
         const data = await response.json();
-        const list = Array.isArray(data.results) ? data.results : [];
+        const list = cleanGeocodeResults(Array.isArray(data.results) ? data.results : []);
         if (!list.length) {
           setCitySearchHint(`لم يتم العثور على مدينة باسم «${query}». جرّب كتابة الاسم بطريقة أخرى.`);
           return;
@@ -2163,21 +2420,58 @@ const tadabburDatabase = [
       }
     }
 
+    // تنقية نتائج البحث: مدن وبلدات فقط، إحداثيات ومنطقة زمنية صالحة، دون تكرار
+    function isValidTimeZone(tz) {
+      if (typeof tz !== 'string' || !tz) return false;
+      try { new Intl.DateTimeFormat('en', { timeZone: tz }); return true; } catch (e) { return false; }
+    }
+
+    function cleanGeocodeResults(results) {
+      const valid = results.filter((p) => {
+        const lat = Number(p.latitude);
+        const lon = Number(p.longitude);
+        return Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && p.name && isValidTimeZone(p.timezone);
+      });
+      const places = valid.filter((p) => /^(PPL|ADM)/.test(String(p.feature_code || '')));
+      const pool = places.length ? places : valid;
+      const seen = new Set();
+      return pool.filter((p) => {
+        const key = `${p.name}|${p.admin1 || ''}|${p.country_code || ''}|${Math.round(p.latitude)}|${Math.round(p.longitude)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 8);
+    }
+
+    function geocodedMethodKey(place) {
+      return METHOD_BY_COUNTRY[String(place.country_code || '').toLowerCase()] || 'mwl';
+    }
+
+    function localTimeIn(tz) {
+      try {
+        return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+      } catch (e) { return ''; }
+    }
+
     function renderCitySearchResults(results) {
       const container = $('citySearchResults');
       if (!container) return;
       container.innerHTML = '';
 
       results.forEach((place) => {
-        if (!Number.isFinite(Number(place.latitude)) || !Number.isFinite(Number(place.longitude))) return;
+        const tz = isValidTimeZone(place.timezone) ? place.timezone : '';
+        const region = [place.admin1, place.country].filter(Boolean).join(' • ');
+        const methodKey = prayerAdv && prayerAdv.method !== 'auto' ? prayerAdv.method : geocodedMethodKey(place);
+        const pop = Number(place.population) > 0 ? ` • ${Number(place.population).toLocaleString('en-US')}` : '';
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'city-result-btn w-full text-right p-2 rounded-xl flex items-center justify-between gap-2';
-        const region = [place.admin1, place.country].filter(Boolean).join(' • ');
         btn.innerHTML = `
           <span class="min-w-0">
             <span class="block font-black text-[11px] truncate">${escapeHtml(place.name || 'مدينة')}</span>
-            <span class="block text-[9px] opacity-60 truncate">${escapeHtml(region || 'بدون تفاصيل')}</span>
+            <span class="block text-[9px] opacity-70 truncate">${escapeHtml(region || 'بدون تفاصيل')}</span>
+            <span dir="ltr" class="block text-[9px] opacity-60 truncate font-mono">${Number(place.latitude).toFixed(2)}°, ${Number(place.longitude).toFixed(2)}°${tz ? ` • ${escapeHtml(tz)} • ${localTimeIn(tz)}` : ''}${pop}</span>
+            <span class="block text-[9px] opacity-60 truncate">${escapeHtml(PRAYER_METHOD_LABELS[methodKey] || PRAYER_METHOD_LABELS.mwl)}</span>
           </span>
           <i class="fa-solid fa-location-arrow text-accent text-[10px] flex-shrink-0"></i>
         `;
@@ -2197,7 +2491,7 @@ const tadabburDatabase = [
         region: [place.admin1, place.country].filter(Boolean).join(' • ') || 'مدينة مخصصة',
         lat,
         lon,
-        tz: place.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        tz: isValidTimeZone(place.timezone) ? place.timezone : Intl.DateTimeFormat().resolvedOptions().timeZone,
         method: METHOD_BY_COUNTRY[countryCode] || 'mwl'
       };
 
@@ -2221,63 +2515,13 @@ const tadabburDatabase = [
       closeAllPopovers();
       fetchWeather();
       renderPrayers(new Date());
+      renderPrayerAdvUI();
     }
 
     function isValidCustomCity(c) {
       return Boolean(c) && typeof c.name === 'string' && typeof c.region === 'string'
         && Number.isFinite(c.lat) && Number.isFinite(c.lon)
         && typeof c.tz === 'string' && typeof c.method === 'string' && c.method in PRAYER_METHODS;
-    }
-
-    function detectUserLocation() {
-      const label = $('detectLocationText');
-      const resetLabel = () => setTimeout(() => { label.textContent = DETECT_LABEL; }, 3000);
-
-      if (!navigator.geolocation) {
-        label.textContent = 'متصفحك لا يدعم تحديد الموقع الجغرافي.';
-        resetLabel();
-        return;
-      }
-
-      label.textContent = 'جاري تحديد إحداثياتك...';
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const { latitude: lat, longitude: lon } = pos.coords;
-          let name = 'موقعي الحالي';
-          let region = `إحداثيات: ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
-          let countryCode = '';
-
-          try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=ar`);
-            if (res.ok) {
-              const address = (await res.json()).address || {};
-              name = address.city || address.town || address.village || address.state || name;
-              if (address.country) region = `${address.country} • GPS مباشر`;
-              countryCode = (address.country_code || '').toLowerCase();
-            }
-          } catch (e) { /* نكتفي بالإحداثيات عند تعذر تحديد اسم المدينة */ }
-
-          const custom = {
-            name,
-            region,
-            lat,
-            lon,
-            tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            method: METHOD_BY_COUNTRY[countryCode] || 'mwl'
-          };
-          citiesDatabase.user_custom = custom;
-          store.setJSON('tv_custom_city', custom);
-
-          selectCity('user_custom');
-          label.textContent = `تم التحديد بنجاح: ${name}`;
-          resetLabel();
-        },
-        () => {
-          label.textContent = 'تعذر تحديد الموقع. يرجى تفعيل إذن الموقع.';
-          resetLabel();
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
     }
 
     // --- 9. WIDGET VISIBILITY & BURN-IN PROTECTION ---
@@ -2319,9 +2563,11 @@ const tadabburDatabase = [
     const BURN_IN_MAX_SHIFT_PX = 3;
 
     function applyBurnInShift() {
+      if (document.hidden) return;
       const main = $('dashboardMain');
-      if (!$('burnInToggle').checked) {
-        main.style.transform = '';
+      const toggle = $('burnInToggle');
+      if (!toggle || !toggle.checked) {
+        if (main && main.style.transform) main.style.transform = '';
         return;
       }
       const offset = () => Math.round((Math.random() * 2 - 1) * BURN_IN_MAX_SHIFT_PX);
@@ -2330,7 +2576,7 @@ const tadabburDatabase = [
 
     function setupBurnInToggle() {
       const toggle = $('burnInToggle');
-      toggle.checked = store.get('tv_burn_in', '1') === '1';
+      toggle.checked = store.get('tv_burn_in', '0') === '1';
       toggle.addEventListener('change', () => {
         store.set('tv_burn_in', toggle.checked ? '1' : '0');
         applyBurnInShift();
@@ -2354,8 +2600,66 @@ const tadabburDatabase = [
       uae: { fajr: 18.2, isha: 18.2 },
       kuwait: { fajr: 18, isha: 17.5 },
       egypt: { fajr: 19.5, isha: 17.5 },
-      mwl: { fajr: 18, isha: 17 }
+      mwl: { fajr: 18, isha: 17 },
+      karachi: { fajr: 18, isha: 18 },
+      isna: { fajr: 15, isha: 15 },
+      turkey: { fajr: 18, isha: 17 },
+      singapore: { fajr: 20, isha: 18 }
     };
+
+    const PRAYER_METHOD_LABELS = {
+      auto: 'تلقائي حسب المدينة', ummalqura: 'أم القرى (مكة المكرمة)', mwl: 'رابطة العالم الإسلامي',
+      egypt: 'الهيئة المصرية العامة للمساحة', karachi: 'جامعة العلوم الإسلامية – كراتشي', isna: 'أمريكا الشمالية (ISNA)',
+      kuwait: 'الكويت', qatar: 'قطر', uae: 'الإمارات', turkey: 'رئاسة الشؤون الدينية (تركيا)',
+      singapore: 'سنغافورة وماليزيا', custom: 'مخصص (زوايا يدوية)'
+    };
+
+    // ===== إعدادات الصلاة المتقدمة =====
+    const PRAYER_ADV_KEY = 'tv_prayer_adv';
+    const PRAYER_ADV_DEFAULTS = {
+      method: 'auto', fajrAngle: 18, ishaAngle: 17, ishaMinutes: 0, asr: 'standard', highLat: 'auto',
+      ramadanOffset: 0,
+      adj: { fajr: 0, sunrise: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 }
+    };
+    let prayerAdv = null;
+    let prayerAdvSig = '';
+
+    function sanitizePrayerAdv(raw) {
+      const d = PRAYER_ADV_DEFAULTS;
+      const r = raw && typeof raw === 'object' ? raw : {};
+      const num = (v, lo, hi, def) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : def;
+      };
+      const adj = {};
+      Object.keys(d.adj).forEach((k) => { adj[k] = Math.round(num(r.adj && r.adj[k], -30, 30, 0)); });
+      const rawRamadan = Number(r.ramadanOffset);
+      const ramadanOffset = [-1, 0, 1].includes(rawRamadan) ? rawRamadan : 0;
+      return {
+        method: (r.method === 'auto' || r.method === 'custom' || PRAYER_METHODS[r.method]) ? r.method : d.method,
+        fajrAngle: num(r.fajrAngle, 5, 25, d.fajrAngle),
+        ishaAngle: num(r.ishaAngle, 5, 25, d.ishaAngle),
+        ishaMinutes: Math.round(num(r.ishaMinutes, 0, 180, 0)),
+        asr: r.asr === 'hanafi' ? 'hanafi' : 'standard',
+        highLat: ['auto', 'none', 'middle', 'seventh', 'angle'].includes(r.highLat) ? r.highLat : d.highLat,
+        ramadanOffset,
+        adj
+      };
+    }
+
+    function loadPrayerAdv() {
+      prayerAdv = sanitizePrayerAdv(store.getJSON(PRAYER_ADV_KEY, null));
+      prayerAdvSig = JSON.stringify(prayerAdv);
+    }
+
+    function prayerMethodParams(city) {
+      const a = prayerAdv || PRAYER_ADV_DEFAULTS;
+      if (a.method === 'custom') {
+        return a.ishaMinutes > 0 ? { fajr: a.fajrAngle, ishaMinutes: a.ishaMinutes } : { fajr: a.fajrAngle, isha: a.ishaAngle };
+      }
+      const key = a.method === 'auto' ? city.method : a.method;
+      return PRAYER_METHODS[key] || PRAYER_METHODS.mwl;
+    }
 
     const DEG = Math.PI / 180;
     const sinDeg = (a) => Math.sin(a * DEG);
@@ -2378,31 +2682,54 @@ const tadabburDatabase = [
     // يرجع أوقات الصلوات كـ timestamp (بالميلي ثانية) ليوم ميلادي محلي للمدينة
     function computePrayerTimes(year, month, day, city) {
       const { lat, lon } = city;
-      const method = PRAYER_METHODS[city.method] || PRAYER_METHODS.mwl;
+      const adv = prayerAdv || PRAYER_ADV_DEFAULTS;
+      const method = prayerMethodParams(city);
       const dayStartUtc = Date.UTC(year, month - 1, day);
       const julianDay = (dayStartUtc + 12 * 3600000) / 86400000 + 2440587.5 - lon / 360;
       const { declination, equationOfTime } = solarPosition(julianDay);
       const noon = 12 - lon / 15 - equationOfTime; // الظهر الفلكي بتوقيت UTC (ساعات)
 
-      // الزمن (ساعات) بين الظهر الفلكي ولحظة وصول الشمس لارتفاع معين
-      const hoursFromNoon = (altitude) => {
+      // الزمن (ساعات) بين الظهر الفلكي ولحظة وصول الشمس لارتفاع معين (strict ← NaN إن لم تبلغه الشمس)
+      const hoursFromNoon = (altitude, strict = false) => {
         const cosH = (sinDeg(altitude) - sinDeg(lat) * sinDeg(declination)) / (cosDeg(lat) * cosDeg(declination));
+        if (strict && (cosH > 1 || cosH < -1)) return NaN;
         return Math.acos(Math.min(1, Math.max(-1, cosH))) / DEG / 15;
       };
 
-      const asrAltitude = Math.atan(1 / (1 + Math.tan(Math.abs(lat - declination) * DEG))) / DEG;
+      const asrFactor = adv.asr === 'hanafi' ? 2 : 1;
+      const asrAltitude = Math.atan(1 / (asrFactor + Math.tan(Math.abs(lat - declination) * DEG))) / DEG;
+      const sunrise = noon - hoursFromNoon(SUN_HORIZON_ANGLE);
       const sunset = noon + hoursFromNoon(SUN_HORIZON_ANGLE);
+
+      // قاعدة خطوط العرض العالية: تحدّ من بعد الفجر/العشاء عن الشروق/الغروب
+      const rule = adv.highLat === 'auto' ? (Math.abs(lat) > 48.5 ? 'angle' : 'none') : adv.highLat;
+      const night = sunrise + 24 - sunset;
+      const portion = (angle) => (rule === 'middle' ? 0.5 : rule === 'seventh' ? 1 / 7 : angle / 60);
+
+      let fajr = rule === 'none' ? noon - hoursFromNoon(-method.fajr) : noon - hoursFromNoon(-method.fajr, true);
+      if (rule !== 'none') {
+        const diff = portion(method.fajr) * night;
+        if (Number.isNaN(fajr) || sunrise - fajr > diff) fajr = sunrise - diff;
+      }
+
       // أم القرى: العشاء بعد المغرب بـ 90 دقيقة، و120 دقيقة في رمضان
       const ishaMinutes = isRamadanDay(dayStartUtc + 12 * 3600000) && method.ramadanIshaMinutes
         ? method.ramadanIshaMinutes
         : method.ishaMinutes;
-      const isha = ishaMinutes !== undefined
-        ? sunset + ishaMinutes / 60
-        : noon + hoursFromNoon(-method.isha);
+      let isha;
+      if (ishaMinutes !== undefined) {
+        isha = sunset + ishaMinutes / 60;
+      } else if (rule === 'none') {
+        isha = noon + hoursFromNoon(-method.isha);
+      } else {
+        isha = noon + hoursFromNoon(-method.isha, true);
+        const diff = portion(method.isha) * night;
+        if (Number.isNaN(isha) || isha - sunset > diff) isha = sunset + diff;
+      }
 
       const hours = {
-        fajr: noon - hoursFromNoon(-method.fajr),
-        sunrise: noon - hoursFromNoon(SUN_HORIZON_ANGLE),
+        fajr,
+        sunrise,
         dhuhr: noon,
         asr: noon + hoursFromNoon(asrAltitude),
         maghrib: sunset,
@@ -2411,8 +2738,9 @@ const tadabburDatabase = [
 
       const result = {};
       PRAYERS.forEach((p) => {
+        const shift = (adv.adj && adv.adj[p.key]) || 0; // تعديل يدوي بالدقائق
         // تقريب لأقرب دقيقة ليتطابق العد التنازلي مع الوقت المعروض
-        result[p.key] = Math.round((dayStartUtc + hours[p.key] * 3600000) / 60000) * 60000;
+        result[p.key] = Math.round((dayStartUtc + (hours[p.key] + shift / 60) * 3600000) / 60000) * 60000;
       });
       return result;
     }
@@ -2457,6 +2785,104 @@ const tadabburDatabase = [
       return timeline;
     }
 
+
+    // ===== واجهة إعدادات الصلاة المتقدمة =====
+    function renderPrayerAdvUI() {
+      if (!prayerAdv) return;
+      const city = citiesDatabase[activeCityKey];
+      if (!city) return;
+      const a = prayerAdv;
+      const cityEl = $('prayerAdvCity');
+      if (cityEl) cityEl.textContent = `${city.name} — ${city.region}`;
+      const effKey = a.method === 'auto' ? city.method : a.method;
+      const effEl = $('prayerAdvEffective');
+      if (effEl) {
+        const p = prayerMethodParams(city);
+        const ish = p.ishaMinutes !== undefined ? `${p.ishaMinutes} د بعد المغرب` : `${p.isha}°`;
+        effEl.textContent = `${PRAYER_METHOD_LABELS[effKey] || PRAYER_METHOD_LABELS.mwl} (${p.fajr}° / ${ish})`;
+      }
+      document.querySelectorAll('[data-prayer-adv]').forEach((el) => {
+        const k = el.dataset.prayerAdv;
+        if (document.activeElement !== el) el.value = String(a[k]);
+      });
+      document.querySelectorAll('[data-prayer-adj]').forEach((el) => {
+        if (document.activeElement !== el) el.value = String(a.adj[el.dataset.prayerAdj]);
+      });
+      const box = $('prayerCustomBox');
+      if (box) box.classList.toggle('hidden', a.method !== 'custom');
+
+      const rOff = Number(a.ramadanOffset) || 0;
+      document.querySelectorAll('[data-ramadan-offset]').forEach((btn) => {
+        const on = Number(btn.dataset.ramadanOffset) === rOff;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      const rHint = $('ramadanOffsetHint');
+      if (rHint) {
+        rHint.textContent = rOff === 0
+          ? 'مطابق لتقويم أم القرى (0).'
+          : (rOff === 1 ? 'تأخير بداية رمضان يوماً واحداً (+1).' : 'تقديم بداية رمضان يوماً واحداً (-1).');
+      }
+
+      const preview = $('prayerAdvPreview');
+      if (preview) {
+        const { year, month, day } = zonedDate(city.tz, Date.now());
+        const times = computePrayerTimes(year, month, day, city);
+        preview.innerHTML = PRAYERS.map((p) => `
+          <div class="flex items-center justify-between">
+            <span class="opacity-80">${p.name}</span>
+            <span dir="ltr" class="font-mono font-bold text-accent">${formatClockTime(times[p.key], city.tz)}</span>
+          </div>`).join('');
+      }
+    }
+
+    function applyPrayerAdvChange() {
+      prayerAdv = sanitizePrayerAdv(prayerAdv);
+      prayerAdvSig = JSON.stringify(prayerAdv);
+      store.setJSON(PRAYER_ADV_KEY, prayerAdv);
+      prayerTimelineKey = '';
+      adhanBaseline = null; // لا يُشغَّل الأذان بسبب تغيير الإعدادات
+      try { renderPrayers(new Date()); } catch (e) { /* تُحدَّث عند النبضة التالية */ }
+      try { renderDates(new Date()); } catch (e) { /* تحديث عدّاد رمضان */ }
+      renderPrayerAdvUI();
+    }
+
+    function setRamadanOffset(val) {
+      if (!prayerAdv) loadPrayerAdv();
+      const n = Number(val);
+      prayerAdv.ramadanOffset = [-1, 0, 1].includes(n) ? n : 0;
+      applyPrayerAdvChange();
+    }
+
+    function resetPrayerAdvanced() {
+      prayerAdv = sanitizePrayerAdv(null);
+      document.querySelectorAll('[data-prayer-adv], [data-prayer-adj]').forEach((el) => el.blur());
+      applyPrayerAdvChange();
+    }
+
+    function setupPrayerAdvanced() {
+      loadPrayerAdv();
+      document.addEventListener('change', (e) => {
+        const el = e.target;
+        if (!el || !el.dataset) return;
+        if (el.dataset.prayerAdv) {
+          const k = el.dataset.prayerAdv;
+          prayerAdv[k] = (el.tagName === 'SELECT') ? el.value : Number(el.value);
+          applyPrayerAdvChange();
+        } else if (el.dataset.prayerAdj) {
+          prayerAdv.adj[el.dataset.prayerAdj] = Number(el.value);
+          applyPrayerAdvChange();
+        }
+      });
+      document.addEventListener('tv-lang-change', renderPrayerAdvUI);
+      window.addEventListener('storage', (e) => {
+        if (e.key !== PRAYER_ADV_KEY) return;
+        loadPrayerAdv();
+        prayerTimelineKey = '';
+        renderPrayerAdvUI();
+      });
+    }
+
     let prayerTimeline = null;
     let prayerTimelineKey = '';
     let prayerRowSignature = '';
@@ -2466,7 +2892,7 @@ const tadabburDatabase = [
       const nowTs = now.getTime();
       const { year, month, day } = zonedDate(city.tz, nowTs);
 
-      const timelineKey = `${activeCityKey}|${year}-${month}-${day}`;
+      const timelineKey = `${activeCityKey}|${year}-${month}-${day}|${prayerAdvSig}`;
       if (timelineKey !== prayerTimelineKey) {
         prayerTimelineKey = timelineKey;
         prayerTimeline = buildPrayerTimeline(city, year, month, day);
@@ -2504,20 +2930,13 @@ const tadabburDatabase = [
         const prayer = PRAYERS[entry.index];
         const isNext = entry.index === nextIndex;
         const card = document.createElement('div');
-        card.className = `p-2 rounded-xl flex flex-col items-center justify-center transition-all ${
-          isNext
-            ? 'tv-accent-panel ring-2 ring-accent z-10'
-            : 'bg-white/5 border border-white/10 opacity-90'
-        }`;
+        card.className = `prayer-tile${isNext ? ' is-next' : ''}`;
+        card.dataset.prayer = prayer.key;
         card.innerHTML = `
-          <span class="text-[11px] font-bold ${isNext ? 'text-accent' : 'opacity-70'} font-tajawal">${prayer.name}</span>
-          <div class="my-0.5 text-base ${isNext ? 'text-accent' : 'opacity-60'}">
-            <i class="fa-solid ${prayer.icon}"></i>
-          </div>
-          <span class="text-xs lg:text-sm font-black font-mono ${isNext ? 'text-accent' : 'opacity-90'}" dir="ltr">
-            ${formatClockTime(entry.ts, timeZone)}
-          </span>
-          ${isNext ? '<span class="text-[9px] bg-accent-subtle text-accent border border-accent/40 px-2 py-0.5 rounded-full font-bold mt-0.5">القادمة</span>' : ''}
+          <span class="pt-name font-tajawal">${prayer.name}</span>
+          <div class="pt-icon"><i class="fa-solid ${prayer.icon}"></i></div>
+          <span class="pt-time" dir="ltr">${formatClockTime(entry.ts, timeZone)}</span>
+          ${isNext ? '<span class="pt-badge">القادمة</span>' : ''}
         `;
         container.appendChild(card);
       });
@@ -2549,8 +2968,13 @@ const tadabburDatabase = [
 
     function hijriParts(date) {
       const parts = {};
-      hijriNumericFormatter.formatToParts(date).forEach((p) => { parts[p.type] = Number(p.value); });
+      hijriNumericFormatter.formatToParts(new Date(date.getTime() + hijriShiftMs())).forEach((p) => { parts[p.type] = Number(p.value); });
       return parts;
+    }
+
+    // تعديل بداية رمضان: -1 = أبكر بيوم، +1 = أبعد بيوم (يُزاح التاريخ الهجري بالعكس)
+    function hijriShiftMs() {
+      return prayerAdv && prayerAdv.ramadanOffset ? -prayerAdv.ramadanOffset * 86400000 : 0;
     }
 
     function isRamadanDay(timestamp) {
@@ -2574,18 +2998,123 @@ const tadabburDatabase = [
       $('dayOfWeekName').textContent = ARABIC_DAYS[now.getDay()];
 
       try {
-        $('hijriDateFull').textContent = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', {
+        $('hijriDateFull').textContent = new Intl.DateTimeFormat(`${I18N.hijriLocale()}-u-ca-islamic-umalqura`, {
           day: 'numeric', month: 'long', year: 'numeric'
-        }).format(now);
+        }).format(new Date(now.getTime() + hijriShiftMs()));
       } catch (e) {
         $('hijriDateFull').textContent = 'تقويم أم القرى';
       }
 
-      $('gregorianDateFull').textContent = new Intl.DateTimeFormat('ar-EG', {
+      $('gregorianDateFull').textContent = new Intl.DateTimeFormat(I18N.locale(), {
         day: 'numeric', month: 'long', year: 'numeric'
       }).format(now);
 
       $('ramadanCountdown').textContent = ramadanStatusText(now);
+    }
+
+    // --- 13b. ترجمة الآية المعروضة بحسب لغة الواجهة (v1.6.4) ---
+    const SURAH_NAME_TO_NUM = {
+      'الفاتحة': 1, 'البقرة': 2, 'آل عمران': 3, 'النساء': 4,
+      'المائدة': 5, 'الأنعام': 6, 'الأعراف': 7, 'الأنفال': 8,
+      'التوبة': 9, 'يونس': 10, 'هود': 11, 'يوسف': 12,
+      'الرعد': 13, 'إبراهيم': 14, 'الحجر': 15, 'النحل': 16,
+      'الإسراء': 17, 'الكهف': 18, 'مريم': 19, 'طه': 20,
+      'الأنبياء': 21, 'الحج': 22, 'المؤمنون': 23, 'النور': 24,
+      'الفرقان': 25, 'الشعراء': 26, 'النمل': 27, 'القصص': 28,
+      'العنكبوت': 29, 'الروم': 30, 'لقمان': 31, 'السجدة': 32,
+      'الأحزاب': 33, 'سبأ': 34, 'فاطر': 35, 'يس': 36,
+      'الصافات': 37, 'ص': 38, 'الزمر': 39, 'غافر': 40,
+      'فصلت': 41, 'الشورى': 42, 'الزخرف': 43, 'الدخان': 44,
+      'الجاثية': 45, 'الأحقاف': 46, 'محمد': 47, 'الفتح': 48,
+      'الحجرات': 49, 'ق': 50, 'الذاريات': 51, 'الطور': 52,
+      'النجم': 53, 'القمر': 54, 'الرحمن': 55, 'الواقعة': 56,
+      'الحديد': 57, 'المجادلة': 58, 'الحشر': 59, 'الممتحنة': 60,
+      'الصف': 61, 'الجمعة': 62, 'المنافقون': 63, 'التغابن': 64,
+      'الطلاق': 65, 'التحريم': 66, 'الملك': 67, 'القلم': 68,
+      'الحاقة': 69, 'المعارج': 70, 'نوح': 71, 'الجن': 72,
+      'المزمل': 73, 'المدثر': 74, 'القيامة': 75, 'الإنسان': 76,
+      'المرسلات': 77, 'النبأ': 78, 'النازعات': 79, 'عبس': 80,
+      'التكوير': 81, 'الانفطار': 82, 'المطففين': 83, 'الانشقاق': 84,
+      'البروج': 85, 'الطارق': 86, 'الأعلى': 87, 'الغاشية': 88,
+      'الفجر': 89, 'البلد': 90, 'الشمس': 91, 'الليل': 92,
+      'الضحى': 93, 'الشرح': 94, 'التين': 95, 'العلق': 96,
+      'القدر': 97, 'البينة': 98, 'الزلزلة': 99, 'العاديات': 100,
+      'القارعة': 101, 'التكاثر': 102, 'العصر': 103, 'الهمزة': 104,
+      'الفيل': 105, 'قريش': 106, 'الماعون': 107, 'الكوثر': 108,
+      'الكافرون': 109, 'النصر': 110, 'المسد': 111, 'الإخلاص': 112,
+      'الفلق': 113, 'الناس': 114, 'الانشراح': 94, 'اللهمز': 104
+    };
+    const AYAH_TRANS_LANGS = { en: 'en.sahih', fr: 'fr.hamidullah' };
+    const AYAH_TRANS_CACHE_KEY = 'tv_ayah_translations_v1';
+    let ayahTranslationCache = {};
+    try { ayahTranslationCache = store.getJSON(AYAH_TRANS_CACHE_KEY, {}) || {}; } catch (e) { ayahTranslationCache = {}; }
+    let ayahTransSeq = 0;
+    let currentAyahItem = null;
+
+    function ayahSurahRef(surahStr) {
+      const parts = String(surahStr || '').split(':');
+      if (parts.length < 2) return null;
+      const name = parts[0].replace(/سورة/g, '').trim();
+      const verseNum = parseInt(parts[1], 10);
+      const surahNum = SURAH_NAME_TO_NUM[name];
+      if (!surahNum || !Number.isFinite(verseNum) || verseNum < 1) return null;
+      return { surahNum: surahNum, verseNum: verseNum };
+    }
+
+    function fitAyahAfterChange() {
+      const verseEl = $('ayahQuranicText');
+      const wrapEl = verseEl ? verseEl.parentElement : null;
+      if (!verseEl || !wrapEl) return;
+      verseEl.style.setProperty('--ayah-fit', '1');
+      for (let f = 0.94; f >= 0.74; f -= 0.06) {
+        if (wrapEl.scrollHeight <= wrapEl.clientHeight + 1) break;
+        verseEl.style.setProperty('--ayah-fit', f.toFixed(2));
+      }
+    }
+
+    function applyAyahTranslation(item) {
+      const verseEl = $('ayahQuranicText');
+      const transEl = $('ayahTranslationText');
+      if (!verseEl || !transEl || !item) return;
+      let lang = 'ar';
+      try { lang = window.I18N ? window.I18N.lang() : 'ar'; } catch (e) { lang = 'ar'; }
+      // العربية: النص الرمزي الأصلي دائماً
+      // الآية تبقى عربية دائماً — الترجمة تُعرض تحتها في اللغات الأخرى (v1.6.5)
+      transEl.textContent = '';
+      transEl.classList.remove('on');
+      if (!lang || lang === 'ar') {
+        if (verseEl.textContent !== item.verse) {
+          verseEl.textContent = item.verse;
+          fitAyahAfterChange();
+        }
+        return;
+      }
+      const edition = AYAH_TRANS_LANGS[lang];
+      if (!edition) return;
+      const ref = ayahSurahRef(item.surah);
+      if (!ref) return;
+      const cacheKey = lang + ':' + ref.surahNum + ':' + ref.verseNum;
+      const seq = ++ayahTransSeq;
+      const finish = (text) => {
+        if (seq !== ayahTransSeq || currentAyahItem !== item) return;
+        if (text) {
+          transEl.textContent = text;
+          transEl.classList.add('on');
+          fitAyahAfterChange();
+        }
+      };
+      if (ayahTranslationCache[cacheKey]) { finish(ayahTranslationCache[cacheKey]); return; }
+      fetch('https://api.alquran.cloud/v1/ayah/' + ref.surahNum + ':' + ref.verseNum + '/' + edition)
+        .then((r) => r.json())
+        .then((data) => {
+          const text = (data && data.code === 200 && data.data && data.data.text) ? String(data.data.text) : '';
+          if (text) {
+            ayahTranslationCache[cacheKey] = text;
+            try { store.set(AYAH_TRANS_CACHE_KEY, JSON.stringify(ayahTranslationCache)); } catch (e) { /* غير حرج */ }
+          }
+          finish(text);
+        })
+        .catch(() => { /* فشل الجلب: تبقى الآية العربية فقط */ });
     }
 
     // --- 14. TADABBUR AYAH ---
@@ -2600,6 +3129,7 @@ const tadabburDatabase = [
 
       currentAyahIdx = newIdx;
       const item = tadabburDatabase[currentAyahIdx];
+      currentAyahItem = item;
       const verseEl = $('ayahQuranicText');
       const tadabburEl = $('ayahTadabburText');
 
@@ -2611,8 +3141,16 @@ const tadabburDatabase = [
         tadabburEl.textContent = item.reflection;
         tadabburEl.title = item.reflection;
         $('ayahSurahBadge').textContent = item.surah;
+        applyAyahTranslation(item);
         verseEl.style.opacity = '1';
         tadabburEl.style.opacity = '1';
+        // ملاءمة تلقائية: إن كانت الآية أطول من منطقة العرض ندرج حجم الخط خطوة خطوة
+        const wrapEl = verseEl.parentElement;
+        verseEl.style.setProperty('--ayah-fit', '1');
+        for (let f = 0.94; f >= 0.74; f -= 0.06) {
+          if (wrapEl.scrollHeight <= wrapEl.clientHeight + 1) break;
+          verseEl.style.setProperty('--ayah-fit', f.toFixed(2));
+        }
       }, 250);
     }
 
@@ -2812,7 +3350,7 @@ const tadabburDatabase = [
     // الأيقونة تتبع الحالة الفعلية (تشمل الخروج بزر Esc)
     document.addEventListener('fullscreenchange', () => {
       const icon = document.fullscreenElement ? 'fa-compress' : 'fa-expand';
-      fsBtn.innerHTML = `<i class="fa-solid ${icon} text-sm"></i>`;
+      fsBtn.innerHTML = `<i class="fa-solid ${icon} text-sm"></i><kbd class="kbd-hint">F</kbd>`;
     });
 
     window.addEventListener('keydown', (e) => {
@@ -2846,6 +3384,7 @@ const tadabburDatabase = [
     const CLOCK_NUMERALS_KEY = 'tv_clock_numerals';
     const DATE_FOCUS_KEY = 'tv_date_focus';
     const CLOCK_24H_KEY = 'tv_clock_24h';
+    const CLOCK_LITE_MARKS_KEY = 'tv_clock_lite_marks';
 
     // face/marks/hands تُترجم إلى data-* على القرص، وquarters تعني الأرقام 12 و3 و6 و9 فقط
     const CLOCK_STYLES = [
@@ -2867,6 +3406,7 @@ const tadabburDatabase = [
     let clockStyleIdx = 0;
     let clockNumerals = 'auto';
     let use24h = false;
+    let clockLiteMarks = true;
 
     function numeralLabel(mode, hour) {
       if (mode === 'roman') return ROMAN_NUMERALS[hour - 1];
@@ -2884,11 +3424,20 @@ const tadabburDatabase = [
       dial.title = `شكل الساعة: ${style.name} — انقر لتغييره`;
 
       if (style.marks !== 'none') {
-        for (let i = 0; i < 60; i++) {
-          const mark = document.createElement('div');
-          mark.className = i % 5 === 0 ? 'analog-mark major' : 'analog-mark';
-          mark.style.transform = `rotate(${i * 6}deg)`;
-          dial.appendChild(mark);
+        if (clockLiteMarks) {
+          for (let i = 0; i < 12; i++) {
+            const mark = document.createElement('div');
+            mark.className = 'analog-mark major';
+            mark.style.transform = `rotate(${i * 30}deg)`;
+            dial.appendChild(mark);
+          }
+        } else {
+          for (let i = 0; i < 60; i++) {
+            const mark = document.createElement('div');
+            mark.className = i % 5 === 0 ? 'analog-mark major' : 'analog-mark';
+            mark.style.transform = `rotate(${i * 6}deg)`;
+            dial.appendChild(mark);
+          }
         }
       }
 
@@ -2922,6 +3471,7 @@ const tadabburDatabase = [
       const numeralsSelect = $('clockNumeralsSelect');
       const focusSelect = $('dateFocusSelect');
       const toggle24h = $('clock24hToggle');
+      const toggleLiteMarks = $('clockLiteMarksToggle');
 
       styleSelect.innerHTML = CLOCK_STYLES
         .map((style, index) => `<option value="${index}">${escapeHtml(style.name)}</option>`).join('');
@@ -2934,11 +3484,13 @@ const tadabburDatabase = [
       const savedFocus = store.get(DATE_FOCUS_KEY, 'hijri');
       const dateFocus = savedFocus === 'gregorian' ? 'gregorian' : 'hijri';
       use24h = store.get(CLOCK_24H_KEY, '0') === '1';
+      clockLiteMarks = store.get(CLOCK_LITE_MARKS_KEY, '1') === '1';
 
       styleSelect.value = String(clockStyleIdx);
       numeralsSelect.value = clockNumerals;
       focusSelect.value = dateFocus;
       toggle24h.checked = use24h;
+      if (toggleLiteMarks) toggleLiteMarks.checked = clockLiteMarks;
       applyDateFocus(dateFocus);
       buildAnalogDial();
 
@@ -2964,6 +3516,13 @@ const tadabburDatabase = [
         renderClock(now);
         renderPrayers(now);
       });
+      if (toggleLiteMarks) {
+        toggleLiteMarks.addEventListener('change', () => {
+          clockLiteMarks = toggleLiteMarks.checked;
+          store.set(CLOCK_LITE_MARKS_KEY, clockLiteMarks ? '1' : '0');
+          buildAnalogDial();
+        });
+      }
     }
 
     // --- 16d. ADHAN TAKBEER SOUND (الملف الصوتي يُحفظ محلياً في IndexedDB) ---
@@ -3110,17 +3669,21 @@ const tadabburDatabase = [
     const REMIND_FILE_NAME_KEY = 'tv_remind_file_name';
     const REMIND_LEAD_MS = 15 * 60 * 1000; // ربع ساعة
 
-    // تنبيه كل ساعة: نغمة بسيطة مختلطة عن نغمة الربع (متوقف افتراضياً)
+    // تنبيه كل ساعة + مقطع الصلاة على النبي ﷺ
+    const SALAWAT_AUDIO_URL = 'https://file.garden/an5JdIrGtwwEoiH6/tab/sly.m4a';
     const REMIND_HOURLY_KEY = 'tv_remind_hourly';
     const REMIND_HOURLY_LAST_KEY = 'tv_remind_hourly_last';
+    const REMIND_HOURLY_TONE_KEY = 'tv_remind_hourly_tone';
+    const REMIND_HOURLY_TONES = ['salawat', 'hourly-ding', 'chime1', 'chime2', 'chime3', 'adhan-short'];
 
     let remindBeforeEnabled = false;
     let remindAfterEnabled = false;
     let remindHourlyEnabled = false;
-    let remindTone = 'chime1';
+    let remindTone = 'salawat';
     let remindVolume = 70;
     let remindAudio = null;
     let remindUrl = '';
+    let hourlyTone = 'salawat'; // v1.6.5: نغمة مستقلة لتنبيه كل ساعة (فصل عن remindTone)
 
     function randomTrack(tracks) {
       if (!tracks.length) return '';
@@ -3331,15 +3894,17 @@ const tadabburDatabase = [
           const parts = [];
           if (remindBeforeEnabled) parts.push('قبل الأذان بربع ساعة');
           if (remindAfterEnabled) parts.push('بعد الأذان بربع ساعة');
-          if (remindHourlyEnabled) parts.push('نبرة كل ساعة');
+          if (remindHourlyEnabled) parts.push('عند كل ساعة');
           const toneNames = {
+            salawat: 'الصلاة على النبي ﷺ',
             chime1: 'نغمة 1 (هادئة)',
             chime2: 'نغمة 2 (تنبيه)',
             chime3: 'نغمة 3 (أجراس)',
             'adhan-short': 'مقاطع الأذان المختصرة',
+            'hourly-ding': 'نبرة تقويم خفيفة',
             custom: `ملف مخصّص (${store.get(REMIND_FILE_NAME_KEY, 'بدون ملف')})`
           };
-          text = `مُفعّل: ${parts.join(' + ')} — النغمة: ${toneNames[remindTone] || 'نغمة مولّدة'}`;
+          text = `مُفعّل: ${parts.join(' + ')} — النغمة: ${toneNames[remindTone] || 'الصلاة على النبي ﷺ'}`;
           if (adhanAutoplayBlocked) text += ' — اضغط «تجربة» مرة واحدة لتفعيل الصوت.';
         }
       }
@@ -3355,6 +3920,18 @@ const tadabburDatabase = [
         if (typeof audioBus.onStolen[stolen] === 'function') audioBus.onStolen[stolen]();
         audioBus.key = 'remind';
         audioBus.element = null;
+      }
+      if (remindTone === 'salawat') {
+        const audio = new Audio(SALAWAT_AUDIO_URL);
+        audio.volume = remindVolume / 100;
+        claimAudio('remind', audio);
+        return audio.play().then(() => true).catch(() => {
+          releaseAudio('remind');
+          return false;
+        });
+      }
+      if (remindTone === 'hourly-ding') {
+        return Promise.resolve(Boolean(playHourlyDing()));
       }
       if (remindTone === 'chime1' || remindTone === 'chime2' || remindTone === 'chime3') {
         return Promise.resolve(Boolean(playToneChime(Number(remindTone.slice(5)), remindVolume)));
@@ -3372,6 +3949,39 @@ const tadabburDatabase = [
         return remindAudio.play().then(() => true).catch(() => false);
       }
       // لا ملف: ارجع إلى نغمة مولّدة افتراضياً
+      return Promise.resolve(Boolean(playToneChime(1, remindVolume)));
+    }
+
+    // v1.6.5: صوت تنبيه الساعة يُشغَّل بنغمته المستقلة hourlyTone (لا نغممة التنبيهات العامة)
+    function playHourlySound() {
+      if (audioBus.key && audioBus.key !== 'remind') {
+        try { audioBus.element.pause(); } catch (e) { /* لا صوت نشط */ }
+        const stolen = audioBus.key;
+        if (typeof audioBus.onStolen[stolen] === 'function') audioBus.onStolen[stolen]();
+        audioBus.key = 'remind';
+        audioBus.element = null;
+      }
+      if (hourlyTone === 'salawat') {
+        const audio = new Audio(SALAWAT_AUDIO_URL);
+        audio.volume = remindVolume / 100;
+        claimAudio('remind', audio);
+        return audio.play().then(() => true).catch(() => {
+          releaseAudio('remind');
+          return false;
+        });
+      }
+      if (hourlyTone === 'hourly-ding') {
+        return Promise.resolve(Boolean(playHourlyDing()));
+      }
+      if (hourlyTone === 'chime1' || hourlyTone === 'chime2' || hourlyTone === 'chime3') {
+        return Promise.resolve(Boolean(playToneChime(Number(hourlyTone.slice(5)), remindVolume)));
+      }
+      if (hourlyTone === 'adhan-short') {
+        const audio = new Audio(randomTrack(ADHAN_SHORT_TRACKS));
+        audio.volume = remindVolume / 100;
+        claimAudio('remind', audio);
+        return audio.play().then(() => true).catch(() => false);
+      }
       return Promise.resolve(Boolean(playToneChime(1, remindVolume)));
     }
 
@@ -3422,6 +4032,11 @@ const tadabburDatabase = [
       $('remindFileInput').click();
     }
 
+    function updateHourlyToneVisibility() {
+      const row = $('hourlyToneRow');
+      if (row) row.classList.toggle('hidden', !remindHourlyEnabled);
+    }
+
     function syncRemindControls() {
       const beforeToggle = $('remindBeforeToggle');
       const afterToggle = $('remindAfterToggle');
@@ -3432,6 +4047,9 @@ const tadabburDatabase = [
       if (afterToggle) afterToggle.checked = remindAfterEnabled;
       if (hourlyToggle) hourlyToggle.checked = remindHourlyEnabled;
       if (toneSelect) toneSelect.value = remindTone;
+      const hourlyToneSelect = $('hourlyToneSelect');
+      if (hourlyToneSelect) hourlyToneSelect.value = hourlyTone;
+      updateHourlyToneVisibility();
       if (volumeInput) {
         volumeInput.value = String(remindVolume);
         $('remindVolumeLabel').textContent = `${remindVolume}%`;
@@ -3443,8 +4061,10 @@ const tadabburDatabase = [
       remindBeforeEnabled = store.get(REMIND_ENABLED_BEFORE_KEY, '1') === '1'; // مفعّل افتراضياً
       remindAfterEnabled = store.get(REMIND_ENABLED_AFTER_KEY, '0') === '1';
       remindHourlyEnabled = store.get(REMIND_HOURLY_KEY, '0') === '1'; // متوقف افتراضياً
-      const savedTone = store.get(REMIND_TONE_KEY, 'chime1');
-      remindTone = ['chime1', 'chime2', 'chime3', 'adhan-short', 'custom'].includes(savedTone) ? savedTone : 'chime1';
+      const savedTone = store.get(REMIND_TONE_KEY, 'salawat');
+      remindTone = ['salawat', 'chime1', 'chime2', 'chime3', 'adhan-short', 'hourly-ding', 'custom'].includes(savedTone) ? savedTone : 'salawat';
+      const savedHourlyTone = store.get(REMIND_HOURLY_TONE_KEY, 'salawat');
+      hourlyTone = REMIND_HOURLY_TONES.includes(savedHourlyTone) ? savedHourlyTone : 'salawat';
       const savedVolume = Number(store.get(REMIND_VOLUME_KEY, '70'));
       remindVolume = Number.isFinite(savedVolume) ? Math.min(100, Math.max(0, savedVolume)) : 70;
 
@@ -3474,6 +4094,7 @@ const tadabburDatabase = [
         hourlyToggle.addEventListener('change', () => {
           remindHourlyEnabled = hourlyToggle.checked;
           store.set(REMIND_HOURLY_KEY, remindHourlyEnabled ? '1' : '0');
+          updateHourlyToneVisibility();
           renderRemindStatus();
         });
       }
@@ -3481,6 +4102,14 @@ const tadabburDatabase = [
         toneSelect.addEventListener('change', () => {
           remindTone = toneSelect.value;
           store.set(REMIND_TONE_KEY, remindTone);
+          renderRemindStatus();
+        });
+      }
+      const hourlyToneSelect = $('hourlyToneSelect');
+      if (hourlyToneSelect) {
+        hourlyToneSelect.addEventListener('change', () => {
+          hourlyTone = hourlyToneSelect.value;
+          store.set(REMIND_HOURLY_TONE_KEY, hourlyTone);
           renderRemindStatus();
         });
       }
@@ -3515,7 +4144,7 @@ const tadabburDatabase = [
       renderRemindStatus();
     }
 
-    // تنبيه كل ساعة: نبرة بسيطة عند تمام الساعة (مرة واحدة لكل ساعة)
+    // تنبيه كل ساعة: يشغّل النغمة المختارة (كالصلاة على النبي ﷺ) عند تمام الساعة
     function checkHourlyReminder(nowTs) {
       if (!remindHourlyEnabled) return;
       const now = new Date(nowTs);
@@ -3523,24 +4152,29 @@ const tadabburDatabase = [
       const marker = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}T${pad2(now.getHours())}`;
       if (store.get(REMIND_HOURLY_LAST_KEY) === marker) return;
       store.set(REMIND_HOURLY_LAST_KEY, marker);
-      const played = playHourlyDing();
-      if (played) {
-        const when = new Date(nowTs).toLocaleTimeString('ar', { hour: 'numeric', minute: '2-digit' });
-        showNoticeToast(`مرّت الساعة — الآن ${when}`, 'fa-clock', 8000);
-      } else {
-        renderRemindStatus('نبرة الساعة محجوبة من المتصفح — اضغط «تجربة» لتفعيل الصوت.');
-      }
+      const when = new Date(nowTs).toLocaleTimeString(I18N.lang() === 'ar' ? 'ar' : I18N.locale(), { hour: 'numeric', minute: '2-digit' });
+      const msg = hourlyTone === 'salawat'
+        ? `مرّت الساعة (${when}) — اللهم صلِّ وسلِّم على نبينا محمد ﷺ`
+        : `مرّت الساعة — الآن ${when}`;
+      showNoticeToast(msg, 'fa-clock', 12000);
+      playHourlySound().then((played) => {
+        if (!played) {
+          const fallback = playHourlyDing();
+          if (!fallback) renderRemindStatus('نبرة الساعة محجوبة من المتصفح — اضغط «تجربة» لتفعيل الصوت.');
+        }
+      });
     }
 
     function checkReminders(prev, next, nowTs) {
       checkAdhanNotify5min(prev, next, nowTs);
       checkHourlyReminder(nowTs);
+      const salawatSuffix = remindTone === 'salawat' ? ' — اللهم صلِّ وسلِّم على نبينا محمد ﷺ' : '';
       if (remindBeforeEnabled && next && PRAYERS[next.index].key !== 'sunrise') {
         fireReminderIfDue(
           'before',
           `${activeCityKey}|${next.ts}`,
           nowTs >= next.ts - REMIND_LEAD_MS && nowTs < next.ts - REMIND_LEAD_MS + ADHAN_MAX_LATE_MS,
-          `اقترب وقت صلاة ${PRAYERS[next.index].name} — بقيت ربع ساعة`,
+          `اقترب وقت صلاة ${PRAYERS[next.index].name} — بقيت ربع ساعة${salawatSuffix}`,
           'fa-hourglass-half'
         );
       }
@@ -3549,7 +4183,7 @@ const tadabburDatabase = [
           'after',
           `${activeCityKey}|${prev.ts}`,
           nowTs >= prev.ts + REMIND_LEAD_MS && nowTs < prev.ts + REMIND_LEAD_MS + ADHAN_MAX_LATE_MS,
-          `مرّت ربع ساعة على أذان صلاة ${PRAYERS[prev.index].name}`,
+          `مرّت ربع ساعة على أذان صلاة ${PRAYERS[prev.index].name}${salawatSuffix}`,
           'fa-bell'
         );
       }
@@ -3563,11 +4197,11 @@ const tadabburDatabase = [
       LAYOUT_STORAGE_KEY, FONT_SCALES_KEY, DOCK_SETTINGS_KEY, 'tv_widget_visibility',
       'tv_theme_preset', 'tv_custom_color', 'tv_burn_in', 'tv_tasbih_reset_mode',
       'tv_active_city', 'tv_custom_city', 'tv_tasks_expanded', 'tv_tasks_height',
-      CLOCK_STYLE_KEY, CLOCK_NUMERALS_KEY, DATE_FOCUS_KEY, CLOCK_24H_KEY,
+      CLOCK_STYLE_KEY, CLOCK_NUMERALS_KEY, DATE_FOCUS_KEY, CLOCK_24H_KEY, CLOCK_LITE_MARKS_KEY,
       ADHAN_ENABLED_KEY, ADHAN_VOLUME_KEY, ADHAN_SOURCE_KEY,
       REMIND_ENABLED_BEFORE_KEY, REMIND_ENABLED_AFTER_KEY, REMIND_TONE_KEY, REMIND_VOLUME_KEY,
-      REMIND_HOURLY_KEY,
-      'tv_open_links_mode', 'tv_dock_hidden_v1'
+      REMIND_HOURLY_KEY, REMIND_HOURLY_TONE_KEY, TASBIH_TARGET_KEY, TASBIH_ALERT_KEY, KAHF_KEY, KAHF_RECITER_KEY, 'tv_shortcut_hints',
+      'tv_open_links_mode', 'tv_dock_hidden_v1', 'tv_lang', 'tv_focus_v2', 'tv_prayer_adv'
     ];
 
     function setBackupStatus(text) {
@@ -3627,12 +4261,20 @@ const tadabburDatabase = [
 
     // --- 17. MAIN LOOP & INITIALIZER ---
     let renderedDateKey = '';
+    let mainTickTimer = null;
 
-    // ينفّذ كل ثانية مضبوطاً على بداية الثانية لتفادي انحراف المؤقت
+    // ينفّذ كل ثانية عندما يكون التبويب مرئياً، وكل 5 ثوانٍ في الخلفية لفحص الأذان والتنبيهات فقط
     function tick() {
+      if (mainTickTimer) {
+        clearTimeout(mainTickTimer);
+        mainTickTimer = null;
+      }
       try {
         const now = new Date();
-        renderClock(now);
+        const hidden = document.hidden;
+        if (!hidden) {
+          renderClock(now);
+        }
         renderPrayers(now);
 
         const dateKey = localDateKey(now);
@@ -3647,13 +4289,21 @@ const tadabburDatabase = [
           setQuickDhikr(lastDhikrHour);
         }
       } finally {
-        setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
+        const delay = document.hidden ? 5000 : (1000 - (Date.now() % 1000) + 5);
+        mainTickTimer = setTimeout(tick, delay);
       }
     }
 
+    document.addEventListener('visibilitychange', () => {
+      document.body.classList.toggle('tab-hidden', document.hidden);
+      if (!document.hidden) {
+        tick();
+      }
+    });
+
     // كل الأزرار تعتمد على data-action بدل onclick المضمّن، وتُربط بمستمع واحد
     const ACTIONS = {
-      togglePopover, closeAllPopovers, detectUserLocation, displayRandomAyah,
+      togglePopover, closeAllPopovers, displayRandomAyah,
       nextQuickDhikr, incrementDhikrCounter, incrementTasbih, resetTasbih, setTasbihZikr,
       setThemePreset, addNewTask, toggleTask, deleteTask, toggleTasksExpand,
       startLayoutEditing: () => setLayoutEditing(true),
@@ -3663,8 +4313,9 @@ const tadabburDatabase = [
       chooseAdhanFile, testAdhan, removeAdhanFile,
       toggleAyahAudio, chooseRemindFile, testRemind, removeRemindFile,
       showAllDockItems, dismissPrayerNotice,
-      resetAllSettings, uiScaleUp, uiScaleDown, togglePomodoro, pomodoroNext, clearScratchpad,
-      toggleAdhanNotify
+      resetAllSettings, uiScaleUp, uiScaleDown, togglePomodoro, pomodoroNext, pomodoroReset, openFocus, closeFocus, focusRingClick, resetTasbihWird, resetPrayerAdvanced, focusFullscreen,
+      focusSetMode, focusAdjust, clearScratchpad,
+      toggleAdhanNotify, setRamadanOffset, kahfToggle, kahfPlayReciter
     };
 
     // --- 18. بحث قوقل العلوي (بين الزرّين) ---
@@ -3722,65 +4373,391 @@ const tadabburDatabase = [
     function uiScaleUp() { applyUiScale(uiScale + 10); }
     function uiScaleDown() { applyUiScale(uiScale - 10); }
 
-    // --- 20. مؤقت التركيز (Pomodoro) بجانب «الوقت الآن» ---
-    const POMODORO_MODES = {
-      focus: { label: 'تركيز', minutes: 25 },
-      break: { label: 'استراحة', minutes: 5 }
-    };
-    let pomodoroMode = 'focus';
-    let pomodoroRemaining = POMODORO_MODES.focus.minutes * 60;
-    let pomodoroRunning = false;
-    let pomodoroTimer = null;
+    // --- 20. مؤقت التركيز (Pomodoro) — تحكم كامل، يعمل بالطابع الزمني ويستمر بين التبويبات ---
+    const FOCUS_KEY = 'tv_focus_v2';
+    const FOCUS_DEFAULTS = { focus: 25, short: 5, long: 15, rounds: 4, autoStart: false, sound: true, titleTime: true, dimRest: true };
+    const FOCUS_LIMITS = { focus: [1, 180], short: [1, 60], long: [1, 90], rounds: [1, 12] };
+    const FOCUS_LABELS = { focus: 'تركيز', short: 'استراحة قصيرة', long: 'استراحة طويلة' };
+    const RING_LEN = 2 * Math.PI * 44;
+    let focusCfg = Object.assign({}, FOCUS_DEFAULTS);
+    let focusRun = null;
+    let focusTimerId = null;
+    let focusBaseTitle = document.title;
 
-    function renderPomodoro() {
-      const display = $('pomodoroDisplay');
-      if (display) {
-        display.textContent = `${pad2(Math.floor(pomodoroRemaining / 60))}:${pad2(pomodoroRemaining % 60)}`;
-      }
-      const modeLabel = $('pomodoroModeLabel');
-      if (modeLabel) modeLabel.textContent = POMODORO_MODES[pomodoroMode].label;
-      const icon = $('pomodoroToggleIcon');
-      if (icon) icon.className = pomodoroRunning ? 'fa-solid fa-pause text-[9px]' : 'fa-solid fa-play text-[9px]';
+    const tr = (text) => (window.I18N ? window.I18N.t(text) : text);
+
+    function newFocusRun(mode = 'focus', round = 1) {
+      const ms = focusCfg[mode] * 60000;
+      const prev = focusRun || {};
+      const day = localDateKey();
+      const sameDay = prev.day === day;
+      return {
+        mode, round, status: 'idle', endTs: 0, remainingMs: ms, totalMs: ms,
+        day, doneToday: sameDay ? (prev.doneToday || 0) : 0, doneMinutes: sameDay ? (prev.doneMinutes || 0) : 0
+      };
     }
 
-    function setPomodoroMode(mode) {
-      if (!POMODORO_MODES[mode]) return;
-      pomodoroMode = mode;
-      pomodoroRemaining = POMODORO_MODES[mode].minutes * 60;
-      pomodoroRunning = false;
-      renderPomodoro();
+    function clampFocusValue(key, value) {
+      const [lo, hi] = FOCUS_LIMITS[key];
+      const n = Math.round(Number(value));
+      return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : FOCUS_DEFAULTS[key];
+    }
+
+    function saveFocus() {
+      store.setJSON(FOCUS_KEY, { cfg: focusCfg, run: focusRun });
+    }
+
+    function loadFocus() {
+      const saved = store.getJSON(FOCUS_KEY, null);
+      if (saved && saved.cfg) {
+        ['focus', 'short', 'long', 'rounds'].forEach((k) => { focusCfg[k] = clampFocusValue(k, saved.cfg[k]); });
+        ['autoStart', 'sound', 'titleTime', 'dimRest'].forEach((k) => {
+          focusCfg[k] = typeof saved.cfg[k] === 'boolean' ? saved.cfg[k] : FOCUS_DEFAULTS[k];
+        });
+      }
+      const r = saved && saved.run;
+      if (r && FOCUS_LABELS[r.mode] && ['idle', 'running', 'paused'].includes(r.status)) {
+        focusRun = {
+          mode: r.mode, round: Math.min(focusCfg.rounds, Math.max(1, Number(r.round) || 1)),
+          status: r.status, endTs: Number(r.endTs) || 0,
+          remainingMs: Math.max(0, Number(r.remainingMs) || focusCfg[r.mode] * 60000),
+          totalMs: Math.max(60000, Number(r.totalMs) || focusCfg[r.mode] * 60000),
+          day: r.day || localDateKey(), doneToday: Number(r.doneToday) || 0, doneMinutes: Number(r.doneMinutes) || 0
+        };
+      } else {
+        focusRun = newFocusRun();
+      }
+      if (focusRun.day !== localDateKey()) {
+        focusRun.day = localDateKey(); focusRun.doneToday = 0; focusRun.doneMinutes = 0;
+      }
+    }
+
+    function focusRemainingMs() {
+      if (focusRun.status === 'running') return Math.max(0, focusRun.endTs - Date.now());
+      return focusRun.remainingMs;
+    }
+
+    function fmtFocus(ms) {
+      const sec = Math.ceil(ms / 1000);
+      return `${pad2(Math.floor(sec / 60))}:${pad2(sec % 60)}`;
+    }
+
+    function setRing(el, fraction) {
+      if (!el) return;
+      el.style.strokeDasharray = String(RING_LEN);
+      el.style.strokeDashoffset = String(RING_LEN * (1 - Math.min(1, Math.max(0, fraction))));
+    }
+
+    function dotsHtml() {
+      let html = '';
+      for (let i = 1; i <= focusCfg.rounds; i++) {
+        const cls = i < focusRun.round || (i === focusRun.round && focusRun.mode !== 'focus' && focusRun.mode !== 'long' && false)
+          ? 'done' : (i === focusRun.round && focusRun.mode === 'focus' ? 'now' : (i < focusRun.round ? 'done' : ''));
+        html += `<span class="pomo-dot ${cls}"></span>`;
+      }
+      return html;
+    }
+
+    let lastFocusDotsKey = '';
+    function renderPomodoro() {
+      if (!focusRun) return;
+      const ms = focusRemainingMs();
+      const running = focusRun.status === 'running';
+      const text = fmtFocus(ms);
+      const frac = focusRun.totalMs ? ms / focusRun.totalMs : 0;
+      const label = FOCUS_LABELS[focusRun.mode];
+
+      const widget = $('pomodoroWidget');
+      if (widget) {
+        widget.dataset.mode = focusRun.mode;
+        widget.classList.toggle('is-running', running);
+      }
+      const ringEl = $('pomodoroRing');
+      if (ringEl) {
+        const ringTitle = tr(focusCfg.dimRest ? (focusDimOn ? 'اضغط لإلغاء التعتيم' : 'اضغط لتعتيم بقية اللوحة') : 'وضع التركيز الكامل');
+        if (ringEl.title !== ringTitle) ringEl.title = ringTitle;
+      }
+      const display = $('pomodoroDisplay');
+      if (display && display.textContent !== text) display.textContent = text;
+      const modeLabel = $('pomodoroModeLabel');
+      if (modeLabel && modeLabel.dataset.mode !== focusRun.mode) {
+        modeLabel.dataset.mode = focusRun.mode;
+        modeLabel.textContent = label;
+      }
+      setRing($('pomodoroBar'), frac);
+      const icon = $('pomodoroToggleIcon');
+      const iconCls = running ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+      if (icon && icon.className !== iconCls) icon.className = iconCls;
+      const tbtn = $('pomodoroToggleBtn');
+      if (tbtn) tbtn.title = tr(running ? 'إيقاف مؤقت' : (focusRun.status === 'paused' ? 'استئناف' : 'ابدأ'));
+
+      const dKey = `${focusCfg.rounds}-${focusRun.round}-${focusRun.mode}`;
+      if (dKey !== lastFocusDotsKey) {
+        lastFocusDotsKey = dKey;
+        const html = dotsHtml();
+        const d1 = $('pomodoroDots'); if (d1) d1.innerHTML = html;
+        const d2 = $('focusDots'); if (d2) d2.innerHTML = html;
+      }
+
+      // اللوحة الكاملة
+      const overlay = $('focusOverlay');
+      if (overlay && !overlay.classList.contains('hidden')) {
+        $('focusPanel').dataset.mode = focusRun.mode;
+        $('focusBig').textContent = text;
+        setRing($('focusBar'), frac);
+        const fi = $('focusToggleIcon');
+        if (fi) fi.className = iconCls;
+        const fb = $('focusToggleBtn'); if (fb) fb.title = tr(running ? 'إيقاف مؤقت' : (focusRun.status === 'paused' ? 'استئناف' : 'ابدأ'));
+        document.querySelectorAll('[data-focus-tab]').forEach((b) => b.classList.toggle('is-active', b.dataset.focusTab === focusRun.mode));
+        const sl = $('focusSessionLabel');
+        if (sl) {
+          const v = tr(focusRun.mode === 'focus' ? 'الجلسة' : label);
+          const sessionText = focusRun.mode === 'focus' ? `${v} ${focusRun.round} / ${focusCfg.rounds}` : v;
+          if (sl.textContent !== sessionText) sl.textContent = sessionText;
+        }
+        $('focusStatSessions').textContent = String(focusRun.doneToday);
+        $('focusStatMinutes').textContent = String(focusRun.doneMinutes);
+      }
+
+      // عنوان التبويب
+      if (running && focusCfg.titleTime) {
+        document.title = `${text} · ${tr(label)}`;
+      } else if (document.title !== focusBaseTitle) {
+        document.title = focusBaseTitle;
+      }
+    }
+
+    function focusTick() {
+      if (!focusRun) return;
+      if (focusRun.status === 'running' && Date.now() >= focusRun.endTs) {
+        finishFocusSession(false);
+      }
+      if (!document.hidden || (focusRun && focusRun.status === 'running' && focusCfg.titleTime)) {
+        renderPomodoro();
+      }
+    }
+
+    function ensureFocusTimer() {
+      if (focusRun && focusRun.status === 'running') {
+        if (!focusTimerId) focusTimerId = setInterval(focusTick, 1000);
+      } else if (focusTimerId) {
+        clearInterval(focusTimerId);
+        focusTimerId = null;
+      }
+    }
+
+    function startFocus() {
+      if (focusCfg.dimRest) setFocusDim(true);
+      const ms = focusRun.remainingMs > 0 ? focusRun.remainingMs : focusCfg[focusRun.mode] * 60000;
+      focusRun.remainingMs = ms;
+      focusRun.endTs = Date.now() + ms;
+      focusRun.status = 'running';
+      saveFocus();
+      ensureFocusTimer();
+    }
+
+    function pauseFocus() {
+      focusRun.remainingMs = Math.max(0, focusRun.endTs - Date.now());
+      focusRun.status = 'paused';
+      saveFocus();
+      setFocusDim(false);
+      ensureFocusTimer();
     }
 
     function togglePomodoro() {
-      pomodoroRunning = !pomodoroRunning;
-      if (pomodoroRunning && !pomodoroTimer) {
-        pomodoroTimer = setInterval(() => {
-          if (!pomodoroRunning) return;
-          pomodoroRemaining = Math.max(0, pomodoroRemaining - 1);
-          renderPomodoro();
-          if (pomodoroRemaining === 0) {
-            pomodoroRunning = false;
-            showNoticeToast(
-              pomodoroMode === 'focus'
-                ? 'انتهت جلسة التركيز (25 د) — استرح 5 دقائق الآن.'
-                : 'انتهت الاستراحة — هيا نعود لجلسة تركيز جديدة!',
-              pomodoroMode === 'focus' ? 'fa-hourglass-start' : 'fa-brain', 60000
-            );
-            playReminderSound().then((played) => {
-              adhanAutoplayBlocked = !played;
-            });
-            const finished = pomodoroMode;
-            setPomodoroMode(finished === 'focus' ? 'break' : 'focus');
-            if (pomodoroTimer) { clearInterval(pomodoroTimer); pomodoroTimer = null; }
-          }
-        }, 1000);
-      }
+      if (!focusRun) return;
+      if (focusRun.status === 'running') pauseFocus(); else startFocus();
+      ensureAudioCtx();
       renderPomodoro();
     }
 
+    function pomodoroReset() {
+      const ms = focusCfg[focusRun.mode] * 60000;
+      focusRun.status = 'idle'; focusRun.endTs = 0; focusRun.remainingMs = ms; focusRun.totalMs = ms;
+      saveFocus();
+      setFocusDim(false);
+      ensureFocusTimer();
+      renderPomodoro();
+    }
+
+    function focusSetMode(mode) {
+      if (!FOCUS_LABELS[mode]) return;
+      setFocusDim(false);
+      const keepRound = focusRun.round;
+      focusRun = newFocusRun(mode, keepRound);
+      saveFocus();
+      ensureFocusTimer();
+      renderPomodoro();
+    }
+
+    function focusAdjust(deltaMin) {
+      const delta = Number(deltaMin) * 60000;
+      if (!Number.isFinite(delta)) return;
+      const cur = focusRemainingMs();
+      const next = Math.min(180 * 60000, Math.max(60000, cur + delta));
+      if (focusRun.status === 'running') focusRun.endTs = Date.now() + next;
+      focusRun.remainingMs = next;
+      if (next > focusRun.totalMs) focusRun.totalMs = next;
+      saveFocus();
+      renderPomodoro();
+    }
+
+    // الانتقال إلى المرحلة التالية (انتهاء الجلسة أو تخطّيها)
+    function finishFocusSession(skipped) {
+      // تبويبات متعددة: إن عالجها تبويب آخر فنكتفي بتبنّي حالته
+      const stored = store.getJSON(FOCUS_KEY, null);
+      if (!skipped && stored && stored.run && (stored.run.status !== 'running' || stored.run.endTs !== focusRun.endTs)) {
+        loadFocus();
+        renderPomodoro();
+        return;
+      }
+      const finished = focusRun.mode;
+      let nextMode = 'focus';
+      let nextRound = focusRun.round;
+      if (finished === 'focus') {
+        if (!skipped) {
+          focusRun.doneToday += 1;
+          focusRun.doneMinutes += Math.round(focusRun.totalMs / 60000);
+        }
+        nextMode = focusRun.round >= focusCfg.rounds ? 'long' : 'short';
+      } else if (finished === 'short') {
+        nextRound = Math.min(focusCfg.rounds, focusRun.round + 1);
+      } else {
+        nextRound = 1;
+      }
+      const stats = { doneToday: focusRun.doneToday, doneMinutes: focusRun.doneMinutes };
+      focusRun = newFocusRun(nextMode, nextRound);
+      Object.assign(focusRun, stats);
+
+      if (!skipped) {
+        showNoticeToast(
+          finished === 'focus' ? 'انتهت جلسة التركيز — استرح الآن.' : 'انتهت الاستراحة — هيا نعود لجلسة تركيز جديدة!',
+          finished === 'focus' ? 'fa-hourglass-start' : 'fa-brain', 60000
+        );
+        if (focusCfg.sound) playReminderSound().then((played) => { adhanAutoplayBlocked = !played; });
+      }
+      if (focusCfg.autoStart && !skipped) startFocus(); else { saveFocus(); setFocusDim(false); ensureFocusTimer(); }
+    }
+
     function pomodoroNext() {
-      setPomodoroMode(pomodoroMode === 'focus' ? 'break' : 'focus');
-      showNoticeToast(`تم الانتقال إلى وضع «${POMODORO_MODES[pomodoroMode].label}» (${POMODORO_MODES[pomodoroMode].minutes} د).`, 'fa-stopwatch', 4000);
+      finishFocusSession(true);
+      renderPomodoro();
+    }
+
+    // تعتيم بقية اللوحة: يُفعَّل بالضغط على حلقة المؤقت ويُلغى بالضغط عليها مجدداً أو Esc
+    let focusDimOn = false;
+    function setFocusDim(on) {
+      focusDimOn = Boolean(on) && focusCfg.dimRest;
+      document.body.classList.toggle('focus-dim', focusDimOn);
+      renderPomodoro();
+    }
+
+    function focusRingClick() {
+      if (focusCfg.dimRest) setFocusDim(!focusDimOn);
+      else openFocus();
+    }
+
+    function openFocus() {
+      const o = $('focusOverlay');
+      if (!o) return;
+      closeAllPopovers();
+      o.classList.remove('hidden');
+      syncFocusInputs();
+      renderPomodoro();
+    }
+
+    function closeFocus() {
+      const o = $('focusOverlay');
+      if (!o) return;
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      o.classList.add('hidden');
+    }
+
+    function focusFullscreen() {
+      const o = $('focusOverlay');
+      if (!o) return;
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      else if (o.requestFullscreen) o.requestFullscreen().catch(() => {});
+    }
+
+    function syncFocusInputs() {
+      document.querySelectorAll('[data-focus-cfg]').forEach((el) => {
+        const k = el.dataset.focusCfg;
+        if (el.type === 'checkbox') el.checked = Boolean(focusCfg[k]);
+        else if (document.activeElement !== el) el.value = String(focusCfg[k]);
+      });
+    }
+
+    function onFocusCfgChange(el) {
+      const k = el.dataset.focusCfg;
+      if (el.type === 'checkbox') {
+        focusCfg[k] = el.checked;
+      } else {
+        focusCfg[k] = clampFocusValue(k, el.value);
+        el.value = String(focusCfg[k]);
+        // إن كان المؤقت متوقفاً على نفس المرحلة نحدّث مدته فوراً
+        if (focusRun.status === 'idle') {
+          if (k === focusRun.mode) { focusRun.remainingMs = focusRun.totalMs = focusCfg[k] * 60000; }
+          if (k === 'rounds') focusRun.round = Math.min(focusRun.round, focusCfg.rounds);
+        }
+      }
+      saveFocus();
+      if (k === 'dimRest' && !focusCfg.dimRest) setFocusDim(false);
+      syncFocusInputs();
+      lastFocusDotsKey = '';
+      renderPomodoro();
+    }
+
+    function setupPomodoro() {
+      loadFocus();
+      // إن انتهت جلسة أثناء إغلاق الصفحة
+      if (focusRun.status === 'running' && Date.now() >= focusRun.endTs) finishFocusSession(false);
+      syncFocusInputs();
+      ensureFocusTimer();
+      if (focusRun.status === 'running' && focusCfg.dimRest) setFocusDim(true);
+      renderPomodoro();
+
+      document.addEventListener('change', (e) => {
+        const el = e.target;
+        if (el && el.matches && el.matches('[data-focus-cfg]')) onFocusCfgChange(el);
+      });
+      // مزامنة بين تبويبات متعددة
+      window.addEventListener('storage', (e) => {
+        if (e.key !== FOCUS_KEY) return;
+        loadFocus();
+        syncFocusInputs();
+        lastFocusDotsKey = '';
+        renderPomodoro();
+      });
+      const ring = document.querySelector('.pomo-ring');
+      if (ring) ring.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); focusRingClick(); }
+      });
+      // اختصارات اللوحة الكاملة (تُلتقط قبل اختصارات الصفحة)
+      document.addEventListener('keydown', (e) => {
+        const o = $('focusOverlay');
+        if (!o || o.classList.contains('hidden')) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const typing = e.target && e.target.matches && e.target.matches('input[type="number"], input[type="text"], textarea, select');
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFocus(); return; }
+        e.stopPropagation();
+        if (typing) return;
+        const k = e.key.toLowerCase();
+        if (e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); togglePomodoro(); }
+        else if (k === 'r') pomodoroReset();
+        else if (k === 's') pomodoroNext();
+        else if (k === 'f') focusFullscreen();
+      }, true);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && focusDimOn) setFocusDim(false);
+      });
+      o_backdropClose();
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) focusTick(); });
+    }
+
+    function o_backdropClose() {
+      const o = $('focusOverlay');
+      if (o) o.addEventListener('mousedown', (e) => { if (e.target === o) closeFocus(); });
     }
 
     // --- 21. المفكرة السريعة (Scratchpad) بجانب قائمة المهام ---
@@ -3843,7 +4820,7 @@ const tadabburDatabase = [
     function showDesktopNotification(title, body) {
       if (!adhanNotifyEnabled || !canUseNotifications() || Notification.permission !== 'granted') return;
       try {
-        new Notification(title, { body, icon: 'icons/icon-128.png', dir: 'rtl', lang: 'ar', tag: 'smart-newtab-prayer', renotify: false });
+        new Notification(tr(title), { body: tr(body), icon: 'icons/icon-128.png', dir: I18N.dir(), lang: I18N.lang(), tag: 'smart-newtab-prayer', renotify: false });
       } catch (e) { /* بعض المتصفحات تمنع الباني */ }
     }
 
@@ -3898,26 +4875,111 @@ const tadabburDatabase = [
       const due = nowTs >= next.ts - 5 * 60 * 1000 && nowTs < next.ts - 5 * 60 * 1000 + ADHAN_MAX_LATE_MS;
       if (!due || store.get(NOTIFY_5MIN_KEY) === marker) return;
       store.set(NOTIFY_5MIN_KEY, marker);
-      const when = new Date(next.ts).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+      const when = new Date(next.ts).toLocaleTimeString(I18N.lang() === 'ar' ? 'ar-SA' : I18N.locale(), { hour: '2-digit', minute: '2-digit' });
       showDesktopNotification(`بقيت 5 دقائق لصلاة ${PRAYERS[next.index].name}`, `الأذان عند ${when} — استعد للصلاة.`);
     }
 
-    // --- 24. اختصارات لوحة المفاتيح ---
+    // --- 24. اختصارات لوحة المفاتيح وتلميحاتها ---
+    const SHORTCUT_HINTS_KEY = 'tv_shortcut_hints';
+
+    function renderAiDockShortcutBadges() {
+      const links = Array.from(document.querySelectorAll('#widgetAiToolsDock a'));
+      let visibleIdx = 0;
+      links.forEach((a) => {
+        const oldBadge = a.querySelector('.ai-kbd-hint');
+        if (oldBadge) oldBadge.remove();
+        if (a.classList.contains('dock-item-hidden')) return;
+        visibleIdx += 1;
+        if (visibleIdx <= 9) {
+          const kbd = document.createElement('kbd');
+          kbd.className = 'kbd-hint ai-kbd-hint';
+          kbd.textContent = String(visibleIdx);
+          a.appendChild(kbd);
+          const nameSpan = a.querySelector('span');
+          const toolName = nameSpan ? nameSpan.textContent.trim() : '';
+          a.title = `${toolName} (اختصار: ${visibleIdx})`;
+        }
+      });
+    }
+
+    function applyShortcutHintsPref(enabled) {
+      document.body.classList.toggle('hide-shortcut-hints', !enabled);
+      const toggle = $('shortcutHintsToggle');
+      if (toggle && toggle.checked !== enabled) toggle.checked = enabled;
+    }
+
+    function setupShortcutHints() {
+      const enabled = store.get(SHORTCUT_HINTS_KEY, '1') === '1';
+      applyShortcutHintsPref(enabled);
+      renderAiDockShortcutBadges();
+
+      const toggle = $('shortcutHintsToggle');
+      if (toggle) {
+        toggle.checked = enabled;
+        toggle.addEventListener('change', () => {
+          store.set(SHORTCUT_HINTS_KEY, toggle.checked ? '1' : '0');
+          applyShortcutHintsPref(toggle.checked);
+        });
+      }
+
+      const aiDock = $('widgetAiToolsDock');
+      if (aiDock && 'MutationObserver' in window) {
+        new MutationObserver(() => renderAiDockShortcutBadges()).observe(aiDock, {
+          attributes: true, attributeFilter: ['class'], subtree: true
+        });
+      }
+    }
+
     function setupKeyboardShortcuts() {
       document.addEventListener('keydown', (e) => {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         const target = e.target;
         if (target && (target.matches && target.matches('input, textarea, select') || (target.isContentEditable))) return;
 
-        if (e.key === ' ' || e.key === 'Spacebar') {
+        const code = e.code || '';
+        const key = e.key || '';
+
+        if (key === ' ' || key === 'Spacebar' || code === 'Space') {
           e.preventDefault();
           incrementDhikrCounter();
-        } else if (e.key === 't' || e.key === 'T') {
+        } else if (key === '/' || code === 'Slash') {
+          const searchInput = $('googleSearchInput');
+          if (searchInput) {
+            e.preventDefault();
+            searchInput.focus();
+          }
+        } else if (key === '?' || key === '؟') {
+          e.preventDefault();
+          togglePopover('shortcutsPopover');
+        } else if (key === 't' || key === 'T' || code === 'KeyT') {
           togglePopover('tasksPopover');
-        } else if (e.key >= '1' && e.key <= '9') {
+        } else if (key === 'n' || key === 'N' || code === 'KeyN') {
+          togglePopover('scratchPopover');
+        } else if (key === 's' || key === 'S' || code === 'KeyS') {
+          togglePopover('settingsPopover');
+        } else if (key === 'm' || key === 'M' || code === 'KeyM') {
+          togglePopover('azkarPopover');
+        } else if (key === 'g' || key === 'G' || code === 'KeyG') {
+          togglePopover('googlePopover');
+        } else if (key === 'c' || key === 'C' || code === 'KeyC') {
+          togglePopover('cityPopover');
+        } else if (key === 'v' || key === 'V' || code === 'KeyV') {
+          togglePopover('themePopover');
+        } else if (key === 'a' || key === 'A' || code === 'KeyA') {
+          displayRandomAyah();
+        } else if (key === 'p' || key === 'P' || code === 'KeyP') {
+          toggleAyahAudio();
+        } else if (key === 'k' || key === 'K' || code === 'KeyK') {
+          kahfToggle();
+        } else if (key === 'd' || key === 'D' || code === 'KeyD') {
+          nextQuickDhikr();
+        } else if (key === 'f' || key === 'F' || code === 'KeyF') {
+          const fs = $('fullscreenBtn');
+          if (fs) fs.click();
+        } else if (key >= '1' && key <= '9') {
           const links = Array.from(document.querySelectorAll('#widgetAiToolsDock a'))
             .filter((a) => !a.classList.contains('dock-item-hidden'));
-          const link = links[Number(e.key) - 1];
+          const link = links[Number(key) - 1];
           if (link) link.click();
         }
       });
@@ -3980,6 +5042,80 @@ const tadabburDatabase = [
       try { step(); } catch (e) { console.error('init step failed:', e); }
     }
 
+
+    // --- 26. بطاقة التواصل: تكيّف ذكي مع حجم اللوح وتكبير/تصغير الصفحة ---
+    function setupSocialDockFit() {
+      const dock = $('widgetSocialDock');
+      if (!dock) return;
+      let raf = 0;
+
+      function fit() {
+        raf = 0;
+        const items = Array.from(dock.querySelectorAll('a')).filter((a) => !a.classList.contains('dock-item-hidden'));
+        const n = items.length;
+        if (!n) return;
+        const cs = getComputedStyle(dock);
+        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        const wfs = parseFloat(dock.style.getPropertyValue('--wfs')) || 1;
+        const MAX = Math.round(Math.min(64, 44 * wfs));
+        const MIN = 24;
+        const gapFor = (size) => Math.max(3, Math.round(size * 0.2));
+        // أصغر عرض مريح لعرض كل الأيقونات في سطر واحد: يتقلّص شريط الذكاء ليفسح له المجال
+        const COMFY = 30;
+        const needed = Math.ceil(n * COMFY + (n - 1) * gapFor(COMFY) + padX);
+        dock.style.minWidth = `min(${needed}px, 100%)`;
+        const avail = dock.clientWidth - padX;
+        if (avail <= 0) return;
+        const fitRow = (count, size) => count * size + (count - 1) * gapFor(size) <= avail;
+
+        let rows = 1;
+        let size = MAX;
+        while (size > MIN && !fitRow(n, size)) size -= 1;
+
+        if (!fitRow(n, size)) {
+          // لا يتسع في سطر واحد: نوزّع على سطرين أو ثلاثة بحجم متوازن
+          for (rows = 2; rows <= 3; rows++) {
+            const per = Math.ceil(n / rows);
+            let s = Math.min(MAX, 34);
+            while (s > MIN && !fitRow(per, s)) s -= 1;
+            if (fitRow(per, s)) { size = s; break; }
+            size = s;
+          }
+        }
+        const scroll = !fitRow(Math.ceil(n / Math.min(rows, 3)), size);
+        dock.classList.toggle('is-wrapped', rows > 1 && !scroll);
+        dock.classList.toggle('is-scroll', scroll);
+        dock.classList.toggle('is-compact', size <= 30);
+        dock.style.setProperty('--soc-size', `${size}px`);
+        dock.style.setProperty('--soc-gap', `${gapFor(size)}px`);
+      }
+
+      const schedule = () => { if (!raf) raf = requestAnimationFrame(fit); };
+      if ('ResizeObserver' in window) {
+        const ro = new ResizeObserver(schedule);
+        ro.observe(dock);
+        if (dock.parentElement) ro.observe(dock.parentElement);
+      }
+      window.addEventListener('resize', schedule);               // تكبير/تصغير المتصفح يطلق resize
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', schedule);
+      new MutationObserver(schedule).observe(dock, { attributes: true, attributeFilter: ['class', 'style'], subtree: true });
+      document.addEventListener('tv-lang-change', schedule);
+      schedule();
+    }
+
+    // --- 27. اللغة: إعادة رسم ما يعتمد على اللغة عند التبديل ---
+    function setupLanguage() {
+      document.addEventListener('tv-lang-change', () => {
+        renderedDateKey = '';
+        try { renderDates(new Date()); } catch (e) { /* تُحدَّث عند النبضة التالية */ }
+        lastFocusDotsKey = '';
+        const ml = $('pomodoroModeLabel'); if (ml) ml.dataset.mode = '';
+        renderPomodoro();
+        // v1.6.4: ترجمة الآية المعروضة بحسب اللغة الجديدة (أو استرجاع العربية)
+        try { applyAyahTranslation(currentAyahItem); } catch (e) { /* لا آية معروضة بعد */ }
+      });
+    }
+
     function init() {
       runStep(buildCustomizationControls);
       runStep(setupEventListeners);
@@ -3989,12 +5125,17 @@ const tadabburDatabase = [
       runStep(setupDisplaySettings);
       runStep(setupGoogleSearch);
       runStep(setupScratchpad);
+      runStep(setupPrayerAdvanced);
       runStep(setupAdhan);
       runStep(setupReminders);
       runStep(setupAdhanNotifications);
+      runStep(setupKahf);
+      runStep(setupShortcutHints);
       runStep(setupKeyboardShortcuts);
       runStep(setupWeatherTooltips);
-      runStep(() => renderPomodoro());
+      runStep(setupPomodoro);
+      runStep(setupSocialDockFit);
+      runStep(setupLanguage);
       runStep(setupDockItemsManager);
       runStep(setupOpenLinksMode);
       runStep(setupBackup);
@@ -4017,7 +5158,7 @@ const tadabburDatabase = [
         selectCity(citiesDatabase[savedCity] ? savedCity : DEFAULT_CITY, { persist: false });
       });
       runStep(tick);
-      setInterval(displayRandomAyah, 300000);
+      setInterval(() => { if (!document.hidden && !ayahPlaying) displayRandomAyah(); }, 300000);
       setInterval(fetchWeather, 3600000);
       window.addEventListener('online', fetchWeather);
       setInterval(applyBurnInShift, 60000);

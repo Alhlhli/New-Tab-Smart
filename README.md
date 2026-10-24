@@ -103,7 +103,7 @@
 - **Français** (دعم كامل للنصوص والخصائص).
 
 <img width="1805" height="972" alt="image" src="https://github.com/user-attachments/assets/de0dd17d-2a68-410c-aa18-8662cafadc53" />
-<img width="1788" height="972" alt="image" src="https://github.com/user-attachments/assets/42e52afa-3e4e-4fa3-a50a-d38c43a61ddb" />
+<img width="1912" height="976" alt="image" src="https://github.com/user-attachments/assets/dfa6af27-43a5-40d2-a8d3-01c8060e3f54" />
 
 
 ---

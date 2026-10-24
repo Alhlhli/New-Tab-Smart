@@ -24,8 +24,8 @@
 
 للتجربة المباشرة 
 
-alhlhli.github.io/New-Tab-Smart/
-
+[alhlhli.github.io/New-Tab-Smart/
+](https://alhlhli.github.io/New-Tab-Smart/)
 ## 📖 عن المشروع
 
 **New Tab Smart (اللوحة الذكية)** هي إضافة مفتوحة المصدر لمتصفحات الويب الحديثة (Google Chrome, Microsoft Edge, Brave, Opera, وغيرها) تحوّل صفحة البداية الفارغة إلى واجهة ذكية، هادئة، ومفعمة بالإنتاجية والروحانية.

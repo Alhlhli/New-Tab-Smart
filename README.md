@@ -31,8 +31,6 @@
 
 <img width="1795" height="966" alt="image" src="https://github.com/user-attachments/assets/f3f54325-b0f3-4a48-859a-aabb43f46289" />
 
-<img width="1795" height="966" alt="image" src="https://github.com/user-attachments/assets/e46afd63-b42c-4f03-a03e-b9b4210f4abb" />
-
 
 
 ## ✨ أبرز المميزات

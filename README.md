@@ -120,6 +120,10 @@ flowchart LR
     D --> E["🎉 أصبحت جاهزة مع كل تبويب جديد!"]
 ```
 
+<img width="755" height="150" alt="image" src="https://github.com/user-attachments/assets/5ff408ad-80ab-4fbf-91fa-4f07017a19fc" />
+
+
+
 ### الخطوات التفصيلية:
 
 #### أولاً: تحميل ملفات الإضافة

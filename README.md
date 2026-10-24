@@ -1,4 +1,4 @@
-# 🕌 اللوحة الذكية - صفحة تبويب جديدة | New Tab Smart
+<img width="399" height="1163" alt="image" src="https://github.com/user-attachments/assets/cabeca89-94db-4f07-9d5f-5d4076dc4b0c" /># 🕌 اللوحة الذكية - صفحة تبويب جديدة | New Tab Smart
 
 <div align="center">
 
@@ -27,6 +27,13 @@
 صُممت الإضافة لتكون **خفيفة جداً، سريعة الاستجابة، وتحترم خصوصيتك بنسبة 100%**؛ حيث تعمل بدون أي خوادم تتبع أو إعلانات، وتعمل بالكامل داخل جهازك مع تخزين محلي لبياناتك وإمكانية حفظ واسترجاع النسخ الاحتياطية بنقرة واحدة.
 
 ---
+
+
+<img width="1795" height="966" alt="image" src="https://github.com/user-attachments/assets/f3f54325-b0f3-4a48-859a-aabb43f46289" />
+
+<img width="1795" height="966" alt="image" src="https://github.com/user-attachments/assets/e46afd63-b42c-4f03-a03e-b9b4210f4abb" />
+
+
 
 ## ✨ أبرز المميزات
 
@@ -69,6 +76,8 @@
 - رصيف (Dock) عائم وسريع لأبرز منصات الذكاء الاصطناعي: ChatGPT, Claude, Gemini, DeepSeek, Perplexity, وغيرها.
 - شريط للمواقع الاجتماعية والمفضلة الأكثر زيارة مع إمكانية التخصيص وإضافة روابطك الخاصة.
 - نافذة بحث جوجل المنبثقة للوصول السريع إلى أي استفسار بدون مغادرة الصفحة.
+<img width="423" height="817" alt="image" src="https://github.com/user-attachments/assets/cdedebae-5588-4989-9aab-d2f29b520cfc" />
+
 
 ### 8. 📝 إدارة المهام والمسودة الفورية (To-Do & Scratchpad)
 - قائمة مهام ذكية لإضافة مهامك اليومية ومتابعة المنجز منها.
@@ -85,10 +94,19 @@
 - منتقي ألوان متقدم لتحديد لون مميز من اختيارك الخاص.
 - إمكانية إخفاء، إظهار، وإعادة ترتيب أي بطاقة في الواجهة بمرونة تامة.
 
+
+<img width="1797" height="965" alt="image" src="https://github.com/user-attachments/assets/925fdfb8-88c1-4b32-8572-5ef6aed3dd8b" />
+
+<img width="1790" height="984" alt="image" src="https://github.com/user-attachments/assets/ee312996-337f-42db-a4ae-0d46e7c0f224" />
+
 ### 10. 🌐 دعم تعدد اللغات (i18n)
 - **العربية** (اللغة الأساسية الأصلية).
 - **English** (كامل الواجهة وعناصر التحكم).
 - **Français** (دعم كامل للنصوص والخصائص).
+
+<img width="1805" height="972" alt="image" src="https://github.com/user-attachments/assets/de0dd17d-2a68-410c-aa18-8662cafadc53" />
+<img width="1788" height="972" alt="image" src="https://github.com/user-attachments/assets/42e52afa-3e4e-4fa3-a50a-d38c43a61ddb" />
+
 
 ---
 
@@ -152,6 +170,10 @@ flowchart LR
 | <kbd>Space</kbd> (في المسبحة) | الضغط على السبحة الإلكترونية وزيادة العداد |
 | <kbd>Ctrl</kbd> + <kbd>T</kbd> | فتح تبويب جديد والدخول المباشر للوحة |
 | <kbd>Esc</kbd> | إغلاق أي نافذة أو قائمة منبثقة مفتوحة |
+
+
+<img width="399" height="1163" alt="image" src="https://github.com/user-attachments/assets/04d29b47-8962-4bbc-a3b2-9e3ba701eaa4" />
+
 
 ---
 

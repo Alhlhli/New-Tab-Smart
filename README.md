@@ -1,4 +1,4 @@
-<img width="399" height="1163" alt="image" src="https://github.com/user-attachments/assets/cabeca89-94db-4f07-9d5f-5d4076dc4b0c" /># 🕌 اللوحة الذكية - صفحة تبويب جديدة | New Tab Smart
+# 🕌 اللوحة الذكية - صفحة تبويب جديدة | New Tab Smart
 
 <div align="center">
 

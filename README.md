@@ -20,12 +20,6 @@
 
 </div>
 
-
-
-للتجربة المباشرة 
-
-[alhlhli.github.io/New-Tab-Smart/
-](https://alhlhli.github.io/New-Tab-Smart/)
 ## 📖 عن المشروع
 
 **New Tab Smart (اللوحة الذكية)** هي إضافة مفتوحة المصدر لمتصفحات الويب الحديثة (Google Chrome, Microsoft Edge, Brave, Opera, وغيرها) تحوّل صفحة البداية الفارغة إلى واجهة ذكية، هادئة، ومفعمة بالإنتاجية والروحانية.
@@ -33,13 +27,6 @@
 صُممت الإضافة لتكون **خفيفة جداً، سريعة الاستجابة، وتحترم خصوصيتك بنسبة 100%**؛ حيث تعمل بدون أي خوادم تتبع أو إعلانات، وتعمل بالكامل داخل جهازك مع تخزين محلي لبياناتك وإمكانية حفظ واسترجاع النسخ الاحتياطية بنقرة واحدة.
 
 ---
-
-
-<img width="1795" height="966" alt="image" src="https://github.com/user-attachments/assets/f3f54325-b0f3-4a48-859a-aabb43f46289" />
-
-
-
-
 
 ## ✨ أبرز المميزات
 
@@ -82,8 +69,6 @@
 - رصيف (Dock) عائم وسريع لأبرز منصات الذكاء الاصطناعي: ChatGPT, Claude, Gemini, DeepSeek, Perplexity, وغيرها.
 - شريط للمواقع الاجتماعية والمفضلة الأكثر زيارة مع إمكانية التخصيص وإضافة روابطك الخاصة.
 - نافذة بحث جوجل المنبثقة للوصول السريع إلى أي استفسار بدون مغادرة الصفحة.
-<img width="423" height="817" alt="image" src="https://github.com/user-attachments/assets/cdedebae-5588-4989-9aab-d2f29b520cfc" />
-
 
 ### 8. 📝 إدارة المهام والمسودة الفورية (To-Do & Scratchpad)
 - قائمة مهام ذكية لإضافة مهامك اليومية ومتابعة المنجز منها.
@@ -100,19 +85,10 @@
 - منتقي ألوان متقدم لتحديد لون مميز من اختيارك الخاص.
 - إمكانية إخفاء، إظهار، وإعادة ترتيب أي بطاقة في الواجهة بمرونة تامة.
 
-
-<img width="1797" height="965" alt="image" src="https://github.com/user-attachments/assets/925fdfb8-88c1-4b32-8572-5ef6aed3dd8b" />
-
-<img width="1790" height="984" alt="image" src="https://github.com/user-attachments/assets/ee312996-337f-42db-a4ae-0d46e7c0f224" />
-
 ### 10. 🌐 دعم تعدد اللغات (i18n)
 - **العربية** (اللغة الأساسية الأصلية).
 - **English** (كامل الواجهة وعناصر التحكم).
 - **Français** (دعم كامل للنصوص والخصائص).
-
-<img width="1805" height="972" alt="image" src="https://github.com/user-attachments/assets/de0dd17d-2a68-410c-aa18-8662cafadc53" />
-<img width="1912" height="976" alt="image" src="https://github.com/user-attachments/assets/dfa6af27-43a5-40d2-a8d3-01c8060e3f54" />
-
 
 ---
 
@@ -127,10 +103,6 @@ flowchart LR
     C --> D["4. اختيار Load Unpacked"]
     D --> E["🎉 أصبحت جاهزة مع كل تبويب جديد!"]
 ```
-
-<img width="755" height="150" alt="image" src="https://github.com/user-attachments/assets/5ff408ad-80ab-4fbf-91fa-4f07017a19fc" />
-
-
 
 ### الخطوات التفصيلية:
 
@@ -180,10 +152,6 @@ flowchart LR
 | <kbd>Space</kbd> (في المسبحة) | الضغط على السبحة الإلكترونية وزيادة العداد |
 | <kbd>Ctrl</kbd> + <kbd>T</kbd> | فتح تبويب جديد والدخول المباشر للوحة |
 | <kbd>Esc</kbd> | إغلاق أي نافذة أو قائمة منبثقة مفتوحة |
-
-
-<img width="399" height="1163" alt="image" src="https://github.com/user-attachments/assets/04d29b47-8962-4bbc-a3b2-9e3ba701eaa4" />
-
 
 ---
 

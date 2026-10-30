@@ -925,28 +925,140 @@ const tadabburDatabase = [
       ));
     }
 
-    // تخزين آمن: يعمل حتى لو كان localStorage معطلاً أو البيانات المخزنة تالفة
+    // محرك التخزين الهجين فائق السرعة (v2.0.0):
+    // 1) قراءة فورية (0ms) من ذاكرة الكاش لتجنب حجز الـ Main Thread عبر localStorage في كل ثانية.
+    // 2) مزامنة غير متزامنة مع chrome.storage.local (لخدمة الـ Service Worker في الخلفية).
+    // 3) مزامنة سحابية عبر chrome.storage.sync للمهام والإعدادات بين أجهزة المستخدم.
+    const SYNCABLE_KEYS = new Set([
+      'tv_active_city', 'tv_custom_city', 'tv_prayer_adv', 'tv_theme', 'tv_ui_scale',
+      'tv_lang', 'tv_clock_24h', 'tv_clock_style', 'tv_date_emphasis', 'tv_tasks',
+      'tv_scratchpad', 'tv_tasbih_goal', 'tv_tasbih_zikr', 'tv_adhan_enabled',
+      'tv_adhan_volume', 'tv_adhan_source', 'tv_adhan_notify', 'tv_remind_before',
+      'tv_remind_after', 'tv_remind_hourly', 'tv_remind_tone', 'tv_remind_hourly_tone',
+      'tv_remind_volume', 'tv_burn_in'
+    ]);
+    const ALARM_KEYS = new Set([
+      'tv_active_city', 'tv_custom_city', 'tv_prayer_adv', 'tv_adhan_enabled',
+      'tv_adhan_notify', 'tv_remind_before', 'tv_remind_after', 'tv_remind_hourly', 'tv_focus_v2'
+    ]);
+    const hasChromeStorage = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
+    const memStoreCache = new Map();
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k) memStoreCache.set(k, localStorage.getItem(k));
+      }
+    } catch (e) { /* localStorage غير متاح */ }
+
     const store = {
       get(key, fallback = null) {
+        if (memStoreCache.has(key)) {
+          const val = memStoreCache.get(key);
+          return val === null || val === undefined ? fallback : val;
+        }
         try {
           const value = localStorage.getItem(key);
+          if (value !== null) memStoreCache.set(key, value);
           return value === null ? fallback : value;
         } catch (e) { return fallback; }
       },
       set(key, value) {
-        try { localStorage.setItem(key, value); } catch (e) { /* التخزين غير متاح */ }
+        const strVal = String(value);
+        memStoreCache.set(key, strVal);
+        try { localStorage.setItem(key, strVal); } catch (e) { /* التخزين غير متاح */ }
+        if (hasChromeStorage) {
+          try {
+            chrome.storage.local.set({ [key]: strVal });
+            if (SYNCABLE_KEYS.has(key) && strVal.length < 7000 && chrome.storage.sync) {
+              chrome.storage.sync.set({ [key]: strVal });
+            }
+            if (ALARM_KEYS.has(key) && chrome.runtime && chrome.runtime.sendMessage) {
+              chrome.runtime.sendMessage({ action: 'SYNC_ALARMS' }).catch(() => {});
+            }
+          } catch (e) { /* خارج سياق الإضافة */ }
+        }
       },
       remove(key) {
+        memStoreCache.delete(key);
         try { localStorage.removeItem(key); } catch (e) { /* التخزين غير متاح */ }
+        if (hasChromeStorage) {
+          try {
+            chrome.storage.local.remove(key);
+            if (SYNCABLE_KEYS.has(key) && chrome.storage.sync) chrome.storage.sync.remove(key);
+          } catch (e) {}
+        }
       },
       getJSON(key, fallback = null) {
         try {
-          const parsed = JSON.parse(localStorage.getItem(key));
+          const raw = this.get(key, null);
+          if (raw === null) return fallback;
+          const parsed = JSON.parse(raw);
           return parsed === null || parsed === undefined ? fallback : parsed;
         } catch (e) { return fallback; }
       },
-      setJSON(key, value) { this.set(key, JSON.stringify(value)); }
+      setJSON(key, value) { this.set(key, JSON.stringify(value)); },
+      syncAllToBackground() {
+        if (!hasChromeStorage) return;
+        try {
+          const payload = {};
+          memStoreCache.forEach((v, k) => {
+            if (k.startsWith('tv_')) payload[k] = v;
+          });
+          chrome.storage.local.get(null, (localData) => {
+            const merged = Object.assign({}, localData || {}, payload);
+            // استعادة أي مفاتيح مفقودة في localStorage من chrome.storage.local
+            let restored = false;
+            Object.keys(localData || {}).forEach((k) => {
+              if (k.startsWith('tv_') && !memStoreCache.has(k) && typeof localData[k] === 'string') {
+                memStoreCache.set(k, localData[k]);
+                try { localStorage.setItem(k, localData[k]); } catch (e) {}
+                restored = true;
+              }
+            });
+            chrome.storage.local.set(merged, () => {
+              if (chrome.runtime && chrome.runtime.sendMessage) {
+                chrome.runtime.sendMessage({ action: 'SYNC_ALARMS' }).catch(() => {});
+              }
+            });
+            if (restored) {
+              try { loadTasks(); renderPrayers(new Date()); } catch (e) {}
+            }
+          });
+          // استعادة المزامنة السحابية إن وجدت
+          if (chrome.storage.sync) {
+            chrome.storage.sync.get(null, (syncData) => {
+              if (!syncData) return;
+              Object.keys(syncData).forEach((k) => {
+                if (k.startsWith('tv_') && !memStoreCache.has(k) && typeof syncData[k] === 'string') {
+                  memStoreCache.set(k, syncData[k]);
+                  try { localStorage.setItem(k, syncData[k]); } catch (e) {}
+                }
+              });
+            });
+          }
+        } catch (e) {}
+      }
     };
+
+    if (hasChromeStorage && chrome.storage.onChanged) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' || area === 'sync') {
+          Object.keys(changes).forEach((k) => {
+            const nv = changes[k].newValue;
+            if (typeof nv === 'string') {
+              memStoreCache.set(k, nv);
+              try { localStorage.setItem(k, nv); } catch (e) {}
+            }
+          });
+        }
+      });
+    }
+    window.addEventListener('storage', (e) => {
+      if (e.key) {
+        if (e.newValue === null) memStoreCache.delete(e.key);
+        else memStoreCache.set(e.key, e.newValue);
+      }
+    });
 
     function localDateKey(date = new Date()) {
       return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
@@ -3776,7 +3888,8 @@ const tadabburDatabase = [
       claimAudio('adhan', audio);
       return audio.play().then(() => true).catch(() => {
         releaseAudio('adhan');
-        return false;
+        // بديل صوتي محلي عبر WebAudio عند انقطاع الإنترنت
+        return Boolean(playToneChime(3, adhanVolume));
       });
     }
 
@@ -5157,6 +5270,21 @@ const tadabburDatabase = [
         const savedCity = store.get('tv_active_city');
         selectCity(citiesDatabase[savedCity] ? savedCity : DEFAULT_CITY, { persist: false });
       });
+      runStep(() => {
+        // تفعيل الأيقونات المحلية الاحتياطية عند انقطاع الإنترنت أو تعذر تحميل خط FontAwesome
+        const updateOfflineIcons = () => {
+          let faLoaded = false;
+          try { faLoaded = document.fonts && document.fonts.check('900 1em "Font Awesome 6 Free"'); } catch (e) {}
+          document.body.classList.toggle('offline-icons', !navigator.onLine && !faLoaded);
+        };
+        updateOfflineIcons();
+        window.addEventListener('online', updateOfflineIcons);
+        window.addEventListener('offline', updateOfflineIcons);
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(updateOfflineIcons).catch(() => {});
+        }
+      });
+      runStep(() => store.syncAllToBackground());
       runStep(tick);
       setInterval(() => { if (!document.hidden && !ayahPlaying) displayRandomAyah(); }, 300000);
       setInterval(fetchWeather, 3600000);

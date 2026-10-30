@@ -1,0 +1,179 @@
+/**
+ * New Tab Smart v2.0.0 — Offline-First Performance & Icon Fallback Stylesheet
+ * 1) يضمن عرض الخطوط والأيقونات فوراً (0ms FOUT) حتى عند انقطاع الإنترنت بالكامل.
+ * 2) يفعّل تحسينات content-visibility للنوافذ المخفية لتخفيض استهلاك الذاكرة (RAM) في التبويبات المتعددة.
+ */
+
+/* تحسينات الأداء والذاكرة للنوافذ المنبثقة غير النشطة */
+.hidden[id$="Modal"],
+.hidden[id$="Popover"],
+#focusOverlay.hidden,
+#kahfOverlay.hidden {
+  content-visibility: hidden !important;
+  contain-intrinsic-size: 0px 0px;
+}
+
+/* إيقاف الحركات الدورية في التبويبات الخلفية لتوفير المعالج والبطارية 100% */
+body.tab-hidden *,
+body.tab-hidden *::before,
+body.tab-hidden *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+/* سلاسل خطوط نظام محلية احتياطية فورية */
+.font-cairo {
+  font-family: 'Cairo', 'Segoe UI', Tahoma, system-ui, -apple-system, sans-serif;
+}
+.font-tajawal {
+  font-family: 'Tajawal', 'Segoe UI', Tahoma, system-ui, -apple-system, sans-serif;
+}
+.font-quran {
+  font-family: 'Amiri Quran', 'Amiri', 'Traditional Arabic', 'Geeza Pro', serif;
+}
+
+/* نظام الأيقونات الاحتياطي المحلي عند انقطاع الإنترنت (Offline Mode) */
+body.offline-icons .fa-solid,
+body.offline-icons .fa-regular,
+body.offline-icons .fa-brands {
+  font-family: system-ui, -apple-system, "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif !important;
+  font-style: normal;
+  font-weight: normal;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+body.offline-icons .fa-mosque::before { content: "🕌"; }
+body.offline-icons .fa-kaaba::before { content: "🕋"; }
+body.offline-icons .fa-star-and-crescent::before { content: "☪"; }
+body.offline-icons .fa-book-quran::before,
+body.offline-icons .fa-book-open::before,
+body.offline-icons .fa-book-open-reader::before { content: "📖"; }
+body.offline-icons .fa-sun::before { content: "☀"; }
+body.offline-icons .fa-moon::before { content: "🌙"; }
+body.offline-icons .fa-cloud::before { content: "☁"; }
+body.offline-icons .fa-cloud-sun::before,
+body.offline-icons .fa-mountain-sun::before { content: "⛅"; }
+body.offline-icons .fa-cloud-moon::before { content: "☁"; }
+body.offline-icons .fa-cloud-rain::before,
+body.offline-icons .fa-cloud-showers-heavy::before { content: "🌧"; }
+body.offline-icons .fa-cloud-bolt::before,
+body.offline-icons .fa-bolt::before { content: "⚡"; }
+body.offline-icons .fa-snowflake::before { content: "❄"; }
+body.offline-icons .fa-smog::before,
+body.offline-icons .fa-wind::before { content: "💨"; }
+body.offline-icons .fa-droplet::before { content: "💧"; }
+body.offline-icons .fa-bell::before { content: "🔔"; }
+body.offline-icons .fa-bell-slash::before { content: "🔕"; }
+body.offline-icons .fa-clock::before,
+body.offline-icons .fa-clock-rotate-left::before { content: "🕒"; }
+body.offline-icons .fa-hourglass-half::before,
+body.offline-icons .fa-hourglass-start::before { content: "⏳"; }
+body.offline-icons .fa-calendar-days::before,
+body.offline-icons .fa-calendar-check::before { content: "📅"; }
+body.offline-icons .fa-location-dot::before,
+body.offline-icons .fa-location-arrow::before,
+body.offline-icons .fa-location-crosshairs::before,
+body.offline-icons .fa-crosshairs::before { content: "📍"; }
+body.offline-icons .fa-magnifying-glass::before,
+body.offline-icons .fa-search::before { content: "🔍"; }
+body.offline-icons .fa-gear::before,
+body.offline-icons .fa-user-gear::before,
+body.offline-icons .fa-sliders::before { content: "⚙"; }
+body.offline-icons .fa-palette::before { content: "🎨"; }
+body.offline-icons .fa-play::before { content: "▶"; }
+body.offline-icons .fa-pause::before { content: "⏸"; }
+body.offline-icons .fa-stop::before { content: "⏹"; }
+body.offline-icons .fa-forward-step::before { content: "⏭"; }
+body.offline-icons .fa-volume-high::before,
+body.offline-icons .fa-music::before,
+body.offline-icons .fa-file-audio::before { content: "🔊"; }
+body.offline-icons .fa-check::before,
+body.offline-icons .fa-circle-check::before,
+body.offline-icons .fa-list-check::before { content: "✓"; }
+body.offline-icons .fa-xmark::before { content: "✕"; }
+body.offline-icons .fa-plus::before { content: "+"; }
+body.offline-icons .fa-minus::before { content: "−"; }
+body.offline-icons .fa-trash-can::before,
+body.offline-icons .fa-eraser::before { content: "🗑"; }
+body.offline-icons .fa-rotate::before,
+body.offline-icons .fa-rotate-left::before,
+body.offline-icons .fa-rotate-right::before,
+body.offline-icons .fa-arrows-rotate::before { content: "↻"; }
+body.offline-icons .fa-expand::before,
+body.offline-icons .fa-maximize::before,
+body.offline-icons .fa-up-right-and-down-left-from-center::before { content: "⛶"; }
+body.offline-icons .fa-compress::before { content: "🗗"; }
+body.offline-icons .fa-eye::before { content: "👁"; }
+body.offline-icons .fa-eye-slash::before { content: "🚫"; }
+body.offline-icons .fa-language::before,
+body.offline-icons .fa-globe::before,
+body.offline-icons .fa-earth-asia::before { content: "🌐"; }
+body.offline-icons .fa-note-sticky::before,
+body.offline-icons .fa-feather::before { content: "📝"; }
+body.offline-icons .fa-floppy-disk::before,
+body.offline-icons .fa-file-arrow-down::before { content: "💾"; }
+body.offline-icons .fa-file-arrow-up::before { content: "📂"; }
+body.offline-icons .fa-keyboard::before { content: "⌨"; }
+body.offline-icons .fa-wand-magic-sparkles::before,
+body.offline-icons .fa-gem::before { content: "✨"; }
+body.offline-icons .fa-hand-holding-heart::before { content: "🤲"; }
+body.offline-icons .fa-seedling::before { content: "🌱"; }
+body.offline-icons .fa-fire::before { content: "🔥"; }
+body.offline-icons .fa-rocket::before { content: "🚀"; }
+body.offline-icons .fa-brain::before { content: "🧠"; }
+body.offline-icons .fa-code::before { content: "💻"; }
+body.offline-icons .fa-circle-info::before { content: "ℹ"; }
+body.offline-icons .fa-circle-exclamation::before,
+body.offline-icons .fa-triangle-exclamation::before { content: "⚠"; }
+body.offline-icons .fa-arrow-up-right-from-square::before,
+body.offline-icons .fa-external-link-alt::before { content: "↗"; }
+body.offline-icons .fa-arrows-up-down-left-right::before,
+body.offline-icons .fa-up-down-left-right::before { content: "✥"; }
+body.offline-icons .fa-arrows-left-right::before,
+body.offline-icons .fa-right-left::before { content: "⇄"; }
+body.offline-icons .fa-grip-vertical::before,
+body.offline-icons .fa-grip-lines::before { content: "⋮"; }
+body.offline-icons .fa-table-cells::before,
+body.offline-icons .fa-table-cells-large::before,
+body.offline-icons .fa-border-all::before,
+body.offline-icons .fa-layer-group::before,
+body.offline-icons .fa-shapes::before { content: "⊞"; }
+body.offline-icons .fa-spinner::before { content: "◌"; }
+body.offline-icons .fa-circle::before,
+body.offline-icons .fa-certificate::before,
+body.offline-icons .fa-asterisk::before { content: "●"; }
+body.offline-icons .fa-envelope::before { content: "✉"; }
+body.offline-icons .fa-comments::before,
+body.offline-icons .fa-comment-dots::before,
+body.offline-icons .fa-comment-dot::before { content: "💬"; }
+body.offline-icons .fa-video::before,
+body.offline-icons .fa-film::before { content: "🎬"; }
+body.offline-icons .fa-images::before { content: "🖼"; }
+body.offline-icons .fa-newspaper::before { content: "📰"; }
+body.offline-icons .fa-chart-line::before,
+body.offline-icons .fa-wave-square::before { content: "📈"; }
+body.offline-icons .fa-address-book::before,
+body.offline-icons .fa-circle-user::before { content: "👤"; }
+body.offline-icons .fa-share-nodes::before { content: "🔗"; }
+body.offline-icons .fa-text-height::before { content: "↕"; }
+body.offline-icons .fa-hand-pointer::before,
+body.offline-icons .fa-fingerprint::before { content: "👆"; }
+body.offline-icons .fa-face-smile::before { content: "😊"; }
+body.offline-icons .fa-flask::before,
+body.offline-icons .fa-flask-vial::before { content: "🧪"; }
+body.offline-icons .fa-sailboat::before { content: "⛵"; }
+body.offline-icons .fa-fish::before { content: "🐟"; }
+body.offline-icons .fa-google::before { content: "G"; font-weight: 800; }
+body.offline-icons .fa-youtube::before { content: "▶"; }
+body.offline-icons .fa-github::before { content: "⌥"; }
+body.offline-icons .fa-whatsapp::before { content: "✆"; }
+body.offline-icons .fa-telegram::before { content: "➤"; }
+body.offline-icons .fa-x-twitter::before { content: "𝕏"; }
+body.offline-icons .fa-facebook::before,
+body.offline-icons .fa-meta::before { content: "f"; font-weight: 800; }
+body.offline-icons .fa-microsoft::before { content: "⊞"; }
+body.offline-icons .fa-discord::before { content: "🎮"; }
+body.offline-icons .fa-google-drive::before { content: "△"; }

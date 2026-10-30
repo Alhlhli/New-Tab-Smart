@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.6.5-gold?style=for-the-badge&logo=googlechrome&logoColor=white)
+![Version](https://img.shields.io/badge/version-2.0.0-gold?style=for-the-badge&logo=googlechrome&logoColor=white)
 ![Manifest](https://img.shields.io/badge/Manifest-V3-success?style=for-the-badge&logo=w3c&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Chrome%20%7C%20Edge%20%7C%20Brave%20%7C%20Opera-blue?style=for-the-badge)
 ![Languages](https://img.shields.io/badge/Languages-العربية%20%7C%20English%20%7C%20Français-indigo?style=for-the-badge)

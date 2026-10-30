@@ -17,6 +17,7 @@
 [العربية](#-عن-المشروع) • [English Summary](#-english-overview) • [المميزات](#-أبرز-المميزات) • [طريقة التركيب](#-طريقة-التركيب-والتثبيت) • [الاختصارات](#-اختصارات-لوحة-المفاتيح) • [المطور](#-المطور-والمساهمة)
 
 ---
+<img width="1899" height="908" alt="image" src="https://github.com/user-attachments/assets/b8986fc7-7a4d-4c27-b10f-b273de353bc1" />
 
 </div>
 
